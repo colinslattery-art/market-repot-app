@@ -26,10 +26,40 @@ st.title("Interactive Market Leverage Sandbox")
 st.write("Adjust the parameters below to evaluate local Affordability Friction in real time.")
 st.caption(f"📈 Current National 30-Year Fixed Rate: **{live_rate}%**")
 
+# Define expanded exhaustive markets list
+texas_markets = [
+    # Tyler & East Texas
+    "Tyler", "Longview", "Marshall", "Kilgore", "Jacksonville", "Palestine", "Athens", 
+    "Henderson", "Lindale", "Whitehouse", "Bullard", "Chandler", "Canton", "Mineola", 
+    "Quitman", "Winnsboro", "Gilmer", "Gladewater", "Troup", "Arp", "Overton", "Rusk", 
+    "Crockett", "Nacogdoches", "Lufkin", "Mount Pleasant", "Pittsburg", "Sulphur Springs", 
+    "Grand Saline", "Edgewood", "Wills Point", "Emory", "Jefferson", "Mabank", "Gun Barrel City",
+    "Kemp", "Malakoff", "Frankston", "Mount Vernon", "Atlanta", "Carthage", "Center",
+    # DFW Core & Surrounding Commuter Towns
+    "Dallas", "Fort Worth", "Arlington", "Plano", "Garland", "Irving", "McKinney", "Frisco", 
+    "Denton", "Richardson", "Grand Prairie", "Mesquite", "Carrollton", "Lewisville", "Allen", 
+    "Flower Mound", "North Richland Hills", "Euless", "Bedford", "Hurst", "Coppell", "Grapevine", 
+    "Haltom City", "Keller", "Rockwall", "Burleson", "Cleburne", "Weatherford", "Waxahachie", 
+    "Midlothian", "Corsicana", "Ennis", "Lancaster", "DeSoto", "Cedar Hill", "Duncanville", 
+    "Balch Springs", "Seagoville", "Forney", "Terrell", "Crandall", "Kaufman", "Royse City", 
+    "Fate", "Wylie", "Sachse", "Murphy", "Prosper", "Celina", "Anna", "Melissa", "Princeton", 
+    "Farmersville", "Greenville", "Commerce", "Quinlan", "Caddo Mills", "Josephine", "Nevada", 
+    "Lavon", "Little Elm", "The Colony", "Corinth", "Highland Village", "Argyle", "Roanoke", 
+    "Justin", "Ponder", "Krum", "Sanger", "Pilot Point", "Aubrey", "Saginaw", "Lake Worth", 
+    "Azle", "Springtown", "Aledo", "Benbrook", "Crowley", "Joshua", "Alvarado", "Venus", 
+    "Maypearl", "Italy", "Palmer", "Red Oak", "Glenn Heights", "Ovilla", "Hutchins", "Wilmer", 
+    "Ferris", "Southlake", "Colleyville", "Trophy Club", "Westlake", "Haslet", "Rhome", "Decatur", 
+    "Bridgeport", "Boyd", "Willow Park", "Hudson Oaks", "Mineral Wells", "Granbury",
+    "Stephenville", "Glen Rose", "Keene", "Godley", "Grandview", "Rio Vista", 
+    "Blum", "Hillsboro", "Milford", "Frost", "Blooming Grove", "Bynum", "Itasca", "Covington"
+]
+# Eliminate any accidental duplicates and alphabetize
+texas_markets = sorted(list(set(texas_markets)))
+
 # Dropdown for Target Sub-Markets
 sub_market = st.selectbox(
     "Select Target Sub-Market Area",
-    ["Forney", "Terrell", "Crandall", "Rockwall", "Kaufman County (General)"]
+    texas_markets
 )
 
 # Sliders
@@ -45,7 +75,7 @@ def calc_friction(price, rate, income):
 
 friction_index = calc_friction(target_price, interest_rate, median_income)
 
-st.divider() # UI Polish
+st.divider()
 st.metric("Current Affordability Friction Score", f"{friction_index} / 10")
 st.divider()
 
@@ -62,13 +92,13 @@ if st.button("Generate Market Report"):
     
     Write a localized market intelligence report modeled after 'The Praxis Report' specifically tailored to {sub_market}.
     
-    Strictly format your response with these 3 sections. Do not use blockquotes for the table. Ensure the table has proper line breaks:
+    Strictly format your response with these 3 sections. Do NOT merge the table into a single paragraph. Ensure the table uses standard Markdown formatting with new lines for each row:
     
     1. **Applied Dynamics:** Analyze how the {friction_index}/10 Affordability Friction score affects buyer velocity specifically within {sub_market} at a ${target_price} price point and {interest_rate}% interest rate.
     
     2. **Sub-Market Heatmap:**
-    Create a clean Markdown table comparing 3 specific neighborhoods or micro-pockets surrounding or within {sub_market}. Use proper table formatting with vertical bars (|) and header separators (---|---|---|---).
-    Columns required:
+    Create a clean Markdown table comparing 3 specific neighborhoods or micro-pockets surrounding or within {sub_market}. 
+    Use exactly these columns and ensure you include the separating header row (---|---|---|---):
     | Neighborhood / Pocket | Leverage Index | Buyer Velocity | Market Phase |
     
     3. **Actionable Playbook:**
