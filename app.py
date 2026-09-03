@@ -27,16 +27,25 @@ st.metric("Current Affordability Friction Score", f"{friction_index} / 10")
 # 5. Tell the AI what to write when the button is clicked
 if st.button("Generate Market Report"):
     prompt = f"""
-    Using this data (Affordability Friction: {friction_index}/10, Price: ${target_price}, Rate: {interest_rate}%), 
-    generate a real estate market report with exactly 3 sections: 
-    1. Applied Dynamics
-    2. Sub-Market Heatmap
-    3. Actionable Playbook.
-    Keep the tone analytical and strictly follow this structure.
+    Act as an expert real estate data analyst. 
+    Using the following interactive metrics:
+    - Target Purchase Price: ${target_price}
+    - Mortgage Rate: {interest_rate}%
+    - Affordability Friction Score: {friction_index}/10
+    
+    Write a market report modeled after 'The Praxis Report' for a local county. 
+    You MUST output exactly these 3 sections:
+    
+    1. **Applied Dynamics:** Explain how the {friction_index}/10 Affordability Friction is stalling buyer velocity based on the {interest_rate}% rate.
+    2. **Sub-Market Heatmap:** Create a Markdown table comparing 3 local cities. Include columns for Leverage Index, Buyer Velocity, and Market Phase.
+    3. **Actionable Playbook:** Provide one tactical bullet point for sellers and one for buyers based on the metrics.
     """
     
-    response = client.models.generate_content(
-        model='gemini-3.7-flash',
-        contents=prompt
-    )
-    st.markdown(response.text)
+    try:
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt
+        )
+        st.markdown(response.text)
+    except Exception as e:
+        st.error(f"API Error: {e}")
