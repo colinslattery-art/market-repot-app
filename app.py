@@ -1,21 +1,37 @@
 import streamlit as st
 import pandas as pd
+import requests
 from google import genai
 
-# 1. Securely load your Google API Key
+# 1. Securely load your API Keys
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+FRED_API_KEY = st.secrets["FRED_API_KEY"]
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# 2. Build the Web Page Layout
+# 2. Fetch Live Data from FRED
+@st.cache_data(ttl=86400) # Caches the data for 24 hours to save API calls
+def get_live_rate():
+    try:
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key={FRED_API_KEY}&file_type=json&sort_order=desc&limit=1"
+        response = requests.get(url).json()
+        return float(response['observations'][0]['value'])
+    except Exception:
+        return 6.8 # Fallback if FRED is temporarily down
+
+live_rate = get_live_rate()
+
+# 3. Build the Web Page Layout
 st.title("Interactive Market Leverage Sandbox")
 st.write("Adjust the sliders below to calculate local Affordability Friction in real time.")
+st.caption(f"📈 Current National 30-Year Fixed Rate: **{live_rate}%**")
 
-# 3. Create Interactive Sliders for the Client
+# 4. Create Interactive Sliders for the Client
 target_price = st.slider("Target Purchase Price ($)", 200000, 800000, 309000)
-interest_rate = st.slider("Mortgage Rate (%)", 3.0, 9.0, 6.8)
+interest_rate = st.slider("Mortgage Rate (%)", 3.0, 10.0, live_rate, step=0.1)
 median_income = 84000 # Example fixed demographic data
 
-# 4. Calculate Proprietary Math in the Background
+# 5. Calculate Proprietary Math in the Background
 def calc_friction(price, rate, income):
     monthly_payment = (price * (rate / 100)) / 12 
     friction_score = (monthly_payment * 12) / income * 10 
@@ -24,7 +40,7 @@ def calc_friction(price, rate, income):
 friction_index = calc_friction(target_price, interest_rate, median_income)
 st.metric("Current Affordability Friction Score", f"{friction_index} / 10")
 
-# 5. Tell the AI what to write when the button is clicked
+# 6. Tell the AI what to write when the button is clicked
 if st.button("Generate Market Report"):
     prompt = f"""
     Act as an expert real estate data analyst. 
@@ -43,7 +59,7 @@ if st.button("Generate Market Report"):
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-2.5-flash',
             contents=prompt
         )
         st.markdown(response.text)
