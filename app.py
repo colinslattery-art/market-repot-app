@@ -21,18 +21,20 @@ def get_live_rate():
 
 live_rate = get_live_rate()
 
-# 3. Fetch Live Market Data from Redfin
-@st.cache_data(ttl=604800) # Cache for 7 days (Redfin updates weekly/monthly)
+# 3. Fetch Live Market Data from Redfin (Error-Proof)
+@st.cache_data(ttl=604800) # Cache for 7 days
 def get_redfin_data():
-    # URL for Redfin's public city-level market tracker
     url = "https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_market_tracker/city_market_tracker.tsv000.gz"
     
-    # Load only necessary columns to prevent Streamlit memory crashes
-    cols = ['period_end', 'region', 'state_code', 'median_sale_price', 'median_dom', 'months_of_supply']
-    df = pd.read_csv(url, compression='gzip', sep='\t', usecols=cols)
+    # Flexible column selection: only load columns that actually exist in the live file
+    target_cols = ['period_end', 'region', 'state_code', 'state', 'median_sale_price', 'median_dom', 'months_of_supply', 'inventory']
+    df = pd.read_csv(url, compression='gzip', sep='\t', usecols=lambda c: c in target_cols)
     
-    # Filter strictly for Texas and drop empty rows
-    tx_df = df[df['state_code'] == 'TX'].dropna()
+    # Adapt to whichever state column Redfin is currently using
+    state_col = 'state_code' if 'state_code' in df.columns else 'state'
+    
+    # Filter strictly for Texas and drop rows missing critical price data
+    tx_df = df[df[state_col] == 'TX'].dropna(subset=['region', 'median_sale_price'])
     
     # Sort by date to get the most recent data first
     tx_df['period_end'] = pd.to_datetime(tx_df['period_end'])
@@ -41,48 +43,80 @@ def get_redfin_data():
 
 # Load the data quietly in the background
 with st.spinner("Fetching latest Redfin data..."):
-    redfin_df = get_redfin_data()
+    try:
+        redfin_df = get_redfin_data()
+    except Exception as e:
+        st.error(f"Redfin data temporary offline: {e}")
+        redfin_df = pd.DataFrame()
 
 # 4. Web Page Header & Inputs
 st.title("Interactive Market Leverage Sandbox")
 st.write("Adjust the parameters below to evaluate local Affordability Friction in real time.")
 st.caption(f"📈 Current National 30-Year Fixed Rate: **{live_rate}%**")
 
-# Expand exhaustive markets list
+# Define expanded exhaustive markets list
 texas_markets = [
-    "Tyler", "Longview", "Dallas", "Fort Worth", "Arlington", "Plano", "Garland", 
-    "Irving", "McKinney", "Frisco", "Denton", "Richardson", "Rockwall", "Forney", 
-    "Terrell", "Crandall", "Kaufman"
+    "Tyler", "Longview", "Marshall", "Kilgore", "Jacksonville", "Palestine", "Athens", 
+    "Henderson", "Lindale", "Whitehouse", "Bullard", "Chandler", "Canton", "Mineola", 
+    "Quitman", "Winnsboro", "Gilmer", "Gladewater", "Troup", "Arp", "Overton", "Rusk", 
+    "Crockett", "Nacogdoches", "Lufkin", "Mount Pleasant", "Pittsburg", "Sulphur Springs", 
+    "Grand Saline", "Edgewood", "Wills Point", "Emory", "Jefferson", "Mabank", "Gun Barrel City",
+    "Kemp", "Malakoff", "Frankston", "Mount Vernon", "Atlanta", "Carthage", "Center",
+    "Dallas", "Fort Worth", "Arlington", "Plano", "Garland", "Irving", "McKinney", "Frisco", 
+    "Denton", "Richardson", "Grand Prairie", "Mesquite", "Carrollton", "Lewisville", "Allen", 
+    "Flower Mound", "North Richland Hills", "Euless", "Bedford", "Hurst", "Coppell", "Grapevine", 
+    "Haltom City", "Keller", "Rockwall", "Burleson", "Cleburne", "Weatherford", "Waxahachie", 
+    "Midlothian", "Corsicana", "Ennis", "Lancaster", "DeSoto", "Cedar Hill", "Duncanville", 
+    "Balch Springs", "Seagoville", "Forney", "Terrell", "Crandall", "Kaufman", "Royse City", 
+    "Fate", "Wylie", "Sachse", "Murphy", "Prosper", "Celina", "Anna", "Melissa", "Princeton", 
+    "Farmersville", "Greenville", "Commerce", "Quinlan", "Caddo Mills", "Josephine", "Nevada", 
+    "Lavon", "Little Elm", "The Colony", "Corinth", "Highland Village", "Argyle", "Roanoke", 
+    "Justin", "Ponder", "Krum", "Sanger", "Pilot Point", "Aubrey", "Saginaw", "Lake Worth", 
+    "Azle", "Springtown", "Aledo", "Benbrook", "Crowley", "Joshua", "Alvarado", "Venus", 
+    "Maypearl", "Italy", "Palmer", "Red Oak", "Glenn Heights", "Ovilla", "Hutchins", "Wilmer", 
+    "Ferris", "Southlake", "Colleyville", "Trophy Club", "Westlake", "Haslet", "Rhome", "Decatur", 
+    "Bridgeport", "Boyd", "Willow Park", "Hudson Oaks", "Mineral Wells", "Granbury",
+    "Stephenville", "Glen Rose", "Keene", "Godley", "Grandview", "Rio Vista", 
+    "Blum", "Hillsboro", "Milford", "Frost", "Blooming Grove", "Bynum", "Itasca", "Covington"
 ]
+# Eliminate duplicates and alphabetize
 texas_markets = sorted(list(set(texas_markets)))
 
+# Dropdown for Target Sub-Markets
 sub_market = st.selectbox("Select Target Sub-Market Area", texas_markets)
 
-# Automatically extract the latest Redfin metrics for the chosen city
-# Redfin formats city names as "City, TX" in the 'region' column
-city_filter = f"{sub_market}, TX"
-local_data = redfin_df[redfin_df['region'] == city_filter]
-
-# Set dynamic defaults based on Redfin data if available
-if not local_data.empty:
-    latest_median_price = int(local_data.iloc[0]['median_sale_price'])
-    latest_dom = int(local_data.iloc[0]['median_dom'])
-    months_supply = round(local_data.iloc[0]['months_of_supply'], 1)
-    st.success(f"✅ Live Redfin Data Synced: Median Price **${latest_median_price:,}** | **{latest_dom}** Days on Market")
+# 5. Extract Live Local Data
+if not redfin_df.empty:
+    city_filter = f"{sub_market}, TX"
+    local_data = redfin_df[redfin_df['region'] == city_filter]
+    
+    if not local_data.empty:
+        latest_median_price = int(local_data.iloc[0]['median_sale_price'])
+        latest_dom = int(local_data.iloc[0].get('median_dom', 30))
+        months_supply = round(local_data.iloc[0].get('months_of_supply', 2.0), 1)
+        st.success(f"✅ Live Redfin Data Synced: Median Price **${latest_median_price:,}** | **{latest_dom}** Days on Market")
+    else:
+        latest_median_price = 309000
+        latest_dom = 30
+        months_supply = 2.0
+        st.warning(f"⚠️ Specific Redfin data pending for {sub_market}. Using regional default baselines.")
 else:
     latest_median_price = 309000
     latest_dom = 30
     months_supply = 2.0
-    st.warning(f"⚠️ Redfin data pending for {sub_market}. Using default baselines.")
 
-# Sliders
-target_price = st.slider("Target Purchase Price ($)", 200000, 1000000, latest_median_price)
+# 6. Interactive Inputs
+target_price = st.slider("Target Purchase Price ($)", 100000, 1500000, latest_median_price)
 interest_rate = st.slider("Mortgage Rate (%)", 3.0, 10.0, live_rate, step=0.1)
 
-income_data = {"Frisco": 145000, "Plano": 105000, "Forney": 98000, "Fort Worth": 72000, "Dallas": 63000, "Tyler": 61000}
+# Localized Income Logic
+income_data = {
+    "Frisco": 145000, "Prosper": 159000, "Rockwall": 121000, "Plano": 105000, 
+    "Forney": 98000, "Fort Worth": 72000, "Dallas": 63000, "Tyler": 61000, "Longview": 56000
+}
 median_income = income_data.get(sub_market, 84000)
 
-# 5. Background Calculations
+# 7. Background Calculations
 def calc_friction(price, rate, income):
     monthly_payment = (price * (rate / 100)) / 12 
     friction_score = (monthly_payment * 12) / income * 10 
@@ -94,7 +128,7 @@ st.divider()
 st.metric("Current Affordability Friction Score", f"{friction_index} / 10")
 st.divider()
 
-# 6. AI Prompt & Generation
+# 8. AI Prompt & Generation
 if st.button("Generate Market Report"):
     prompt = f"""
     Act as an expert real estate data analyst specializing in North Texas local markets.
