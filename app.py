@@ -34,7 +34,7 @@ st.markdown("""
         input { font-family: 'Playfair Display', serif !important; font-size: 1.5rem !important; color: #0F251A !important; -webkit-text-fill-color: #0F251A !important; text-align: center !important; padding: 1rem !important; background-color: transparent !important; }
         input::placeholder { color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: 'Montserrat', sans-serif !important; font-size: 1rem !important; }
         
-        .client-card { background-color: #FFFFFF; border: 1px solid #EAEAEA; border-top: 3px solid #0F251A; padding: 1.5rem; text-align: center; transition: 0.3s; cursor: pointer; margin-bottom: 1rem; }
+        .client-card { background-color: #FFFFFF; border: 1px solid #EAEAEA; border-top: 3px solid #0F251A; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; }
         .client-card:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid #C5A059; }
         .client-card h3 { font-size: 1.5rem; margin-bottom: 0.5rem; }
         .client-card p { font-size: 0.8rem; color: #777; text-transform: uppercase; letter-spacing: 0.1em; }
@@ -53,7 +53,6 @@ st.markdown("""
         [data-testid="stFormSubmitButton"] > button { width: 250px !important; }
         [data-testid="stVerticalBlock"] .stButton>button, [data-testid="stVerticalBlock"] .stDownloadButton>button { width: 100%; }
         
-        /* Admin Tables */
         .dataframe { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         .dataframe th { background-color: #0F251A; color: #FBFBF9 !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; }
         .dataframe td { padding: 1rem; border-bottom: 1px solid #EAEAEA; background-color: #FFFFFF; }
@@ -111,14 +110,24 @@ class DatabaseEngine:
         conn.close()
         return df
 
+    def check_client_exists(self, agent_username, client_name):
+        """Prevents an agent from creating two clients with the exact same name."""
+        conn = sqlite3.connect("praxis_database.db")
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM clients WHERE agent_username=? AND LOWER(client_name)=?", (agent_username.lower(), client_name.lower()))
+        exists = c.fetchone()
+        conn.close()
+        return bool(exists)
+
     def save_client(self, client_id, agent_username, client_data):
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
+        client_data['agent_owner'] = agent_username.lower() # Tag payload with owner
         payload = json.dumps(client_data)
         c.execute('''INSERT OR REPLACE INTO clients 
                      (client_id, agent_username, client_name, market, target_price, address, report_type, payload) 
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (client_id, agent_username, client_data['name'], client_data['market'], 
+                  (client_id, agent_username.lower(), client_data['name'], client_data['market'], 
                    client_data['price'], client_data['address'], client_data['type'], payload))
         conn.commit()
         conn.close()
@@ -126,16 +135,28 @@ class DatabaseEngine:
     def get_agent_clients(self, agent_username):
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
-        c.execute("SELECT client_id, payload FROM clients WHERE agent_username=?", (agent_username,))
+        c.execute("SELECT client_id, payload FROM clients WHERE agent_username=?", (agent_username.lower(),))
         rows = c.fetchall()
         conn.close()
         return {row[0]: json.loads(row[1]) for row in rows}
         
     def get_all_clients_admin(self):
+        """Fetches all clients globally for the God Mode view."""
         conn = sqlite3.connect("praxis_database.db")
-        df = pd.read_sql_query("SELECT agent_username, client_name, market, target_price, report_type FROM clients", conn)
+        c = conn.cursor()
+        c.execute("SELECT client_id, agent_username, payload FROM clients")
+        rows = c.fetchall()
         conn.close()
-        return df
+        return [{"client_id": r[0], "agent": r[1], "data": json.loads(r[2])} for r in rows]
+
+    def get_client_by_id(self, client_id):
+        """Fetches a specific client regardless of who owns it."""
+        conn = sqlite3.connect("praxis_database.db")
+        c = conn.cursor()
+        c.execute("SELECT payload FROM clients WHERE client_id=?", (client_id,))
+        row = c.fetchone()
+        conn.close()
+        return json.loads(row[0]) if row else None
 
 db = DatabaseEngine()
 
@@ -173,7 +194,7 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 def get_live_rate(): return 6.8
 live_rate = get_live_rate()
 
-# --- PDF GENERATOR (BUG FIXED) ---
+# --- PDF GENERATOR ---
 def sanitize_text_for_pdf(text):
     replacements = {'“': '"', '”': '"', '‘': "'", '’': "'", '—': '--', '–': '-', '…': '...'}
     for k, v in replacements.items(): text = text.replace(k, v)
@@ -213,8 +234,6 @@ def generate_pdf(client_name, market, address, text):
             pdf.set_text_color(30, 30, 30)
         else:
             pdf.multi_cell(0, 6, line.replace('**', ''))
-    
-    # SQUASHED PDF ENCODING BUG 
     return pdf.output(dest='S').encode('latin-1')
 
 def generate_strategy_memo(client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
@@ -263,7 +282,7 @@ if not st.session_state.logged_in:
                     st.error("Authentication failed. Invalid credentials.")
 
 # ====================================================================
-# VIEW 1: GLOBAL ADMIN DASHBOARD 
+# VIEW 1: GLOBAL ADMIN DASHBOARD (God Mode)
 # ====================================================================
 elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
     st.markdown("<div class='brand-header'>SYSTEM ADMINISTRATOR</div>", unsafe_allow_html=True)
@@ -272,7 +291,7 @@ elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
     if st.button("Log Out"): logout()
     st.divider()
     
-    t1, t2 = st.tabs(["Agent Provisioning", "Global Client Database"])
+    t1, t2 = st.tabs(["Agent Provisioning", "Global Client Database (God Mode)"])
     
     with t1:
         st.markdown("### Provision New Agent Account")
@@ -282,8 +301,8 @@ elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
                 n_user = st.text_input("New Username")
                 n_pwd = st.text_input("Initial Password", type="password")
                 if st.form_submit_button("Create Account"):
-                    if db.add_user(n_user, n_pwd): st.success(f"Account '{n_user}' provisioned.")
-                    else: st.error("Username already exists.")
+                    if db.add_user(n_user, n_pwd): st.success(f"Account '{n_user}' provisioned. They may now log in.")
+                    else: st.error("Username already exists. Usernames must be strictly unique.")
         with c2:
             st.markdown("### Active System Users")
             st.dataframe(db.get_all_users(), hide_index=True, use_container_width=True)
@@ -291,8 +310,26 @@ elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
     with t2:
         st.markdown("### System-Wide Intelligence Activity")
         global_clients = db.get_all_clients_admin()
-        st.dataframe(global_clients, hide_index=True, use_container_width=True)
         st.metric("Total Intel Briefs Generated", len(global_clients))
+        st.divider()
+        
+        if not global_clients:
+            st.info("No client data generated yet by any agents.")
+        else:
+            col_a, col_b, col_c = st.columns(3)
+            cols = [col_a, col_b, col_c]
+            
+            for idx, c in enumerate(global_clients):
+                cdata = c['data']
+                cid = c['client_id']
+                agent_name = c['agent'].upper()
+                
+                with cols[idx % 3]:
+                    st.markdown(f"<div class='client-card'><h3>{cdata['name']}</h3><p>AGENT: {agent_name}<br>{cdata['market']} | {cdata['type']}</p></div>", unsafe_allow_html=True)
+                    if st.button(f"Enter Dashboard ➔", key=f"godmode_{cid}"):
+                        st.session_state.active_client_id = cid
+                        st.session_state.view_mode = "sandbox"
+                        st.rerun()
 
 # ====================================================================
 # VIEW 2: AGENT HUB (ROSTER)
@@ -339,8 +376,13 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard"
             with st.form("step1_form"):
                 client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
                 if st.form_submit_button("Continue") and client_input.strip():
-                    st.session_state.temp_client['name'] = client_input.title().strip()
-                    st.session_state.wizard_step = 2; st.rerun()
+                    clean_name = client_input.title().strip()
+                    # UNIQUENESS CHECK
+                    if db.check_client_exists(st.session_state.username, clean_name):
+                        st.error(f"⚠️ Client '{clean_name}' already exists in your roster. Please use a unique identifier (e.g., '{clean_name} - Buyer').")
+                    else:
+                        st.session_state.temp_client['name'] = clean_name
+                        st.session_state.wizard_step = 2; st.rerun()
 
         elif st.session_state.wizard_step == 2:
             st.markdown(f"<h1>Which Texas sub-market are we analyzing for {st.session_state.temp_client['name']}?</h1>", unsafe_allow_html=True)
@@ -393,18 +435,24 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard"
 # ====================================================================
 # VIEW 4: THE AGENT SANDBOX (CLIENT DASHBOARD)
 # ====================================================================
-elif st.session_state.role == "agent" and st.session_state.view_mode == "sandbox":
+elif st.session_state.view_mode == "sandbox":
     
     cid = st.session_state.active_client_id
-    client_data = db.get_agent_clients(st.session_state.username)[cid]
+    client_data = db.get_client_by_id(cid)
+    
+    # Identify who actually owns this client data to save overrides back correctly
+    owner_agent = client_data.get('agent_owner', st.session_state.username)
     market_info = engine.get_market_metrics(client_data['market'])
     
     with st.sidebar:
         st.markdown("<h2 style='text-align: center; color:#0F251A !important;'>PRAXIS</h2>", unsafe_allow_html=True)
-        st.markdown("<div style='text-align: center; color: #C5A059 !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>AGENT SANDBOX</div>", unsafe_allow_html=True)
         
-        if st.button("⬅ Return to Client Hub"):
-            st.session_state.view_mode = "hub"; st.rerun()
+        mode_text = "GOD MODE ACTIVE" if st.session_state.role == "admin" else "AGENT SANDBOX"
+        st.markdown(f"<div style='text-align: center; color: #C5A059 !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>{mode_text}</div>", unsafe_allow_html=True)
+        
+        if st.button("⬅ Return to Hub"):
+            st.session_state.view_mode = "admin" if st.session_state.role == "admin" else "hub"
+            st.rerun()
             
         st.divider()
         st.markdown("### Client Overrides")
@@ -416,12 +464,13 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "sandbox
         new_tax = st.number_input("Tax Rate (%)", value=client_data.get('tax_rate_override', 2.2), step=0.1)
         new_hoa = st.number_input("HOA ($/mo)", value=client_data.get('hoa_override', 0), step=10)
         
+        # Save overrides 
         if (new_type != client_data['type'] or new_price != client_data['price'] or 
             new_rate != client_data['base_rate'] or new_tax != client_data.get('tax_rate_override') or 
             new_hoa != client_data.get('hoa_override')):
             
             client_data.update({'type': new_type, 'price': new_price, 'base_rate': new_rate, 'tax_rate_override': new_tax, 'hoa_override': new_hoa})
-            db.save_client(cid, st.session_state.username, client_data)
+            db.save_client(cid, owner_agent, client_data)
             st.rerun()
 
     st.markdown("<div class='brand-header'>COLIN SLATTERY | REAL BROKER LLC</div>", unsafe_allow_html=True)
@@ -467,7 +516,7 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "sandbox
                 with st.spinner("Authoring Advisory Brief..."):
                     brief = generate_strategy_memo(client_data['name'], client_data['type'], client_data['market'], client_data['address'], client_data['price'], client_data['base_rate'], friction_score)
                     client_data['saved_brief'] = brief
-                    db.save_client(cid, st.session_state.username, client_data)
+                    db.save_client(cid, owner_agent, client_data)
                     st.rerun()
             
             if client_data.get('saved_brief'):
