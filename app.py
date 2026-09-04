@@ -3,63 +3,46 @@ import pandas as pd
 import requests
 from google import genai
 
-# --- PAGE CONFIGURATION & CUSTOM GUI CSS ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="Praxis Report - Market Intelligence Sandbox",
     page_icon="📈",
     layout="wide"
 )
 
-# Inject Custom Branding CSS (Inspired by modern luxury real estate design)
+# --- INJECT THEME-ADAPTIVE CSS (LIGHT & DARK MODE COMPATIBLE) ---
 st.markdown("""
     <style>
-        /* Global Typography & Background */
+        /* Global Typography & Font Family */
         html, body, [class*="css"] {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #FAFAFA;
-            color: #1a1a1a;
         }
         
-        /* Hide Streamlit Header & Footer for a white-label feel */
+        /* Hide Streamlit Chrome for White-Label Look */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header {visibility: hidden;}
         
-        /* Metric Box Styling */
-        div[data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-            font-weight: 600 !important;
-            color: #111827 !important;
-        }
-        div[data-testid="stMetricLabel"] {
-            font-size: 0.95rem !important;
-            font-weight: 500 !important;
-            color: #6B7280 !important;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+        /* Metric Box Containers */
         div[data-testid="metric-container"] {
-            background-color: #FFFFFF;
-            border: 1px solid #E5E7EB;
+            background-color: var(--secondary-background-color) !important;
+            border: 1px solid rgba(128, 128, 128, 0.2) !important;
             border-radius: 8px;
             padding: 1rem;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        
-        /* Primary Button Styling */
-        .stButton>button {
-            background-color: #111827 !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            border-radius: 4px !important;
-            padding: 0.5rem 2rem !important;
+        div[data-testid="stMetricValue"] {
+            font-size: 2rem !important;
             font-weight: 600 !important;
-            letter-spacing: 0.02em;
-            transition: all 0.2s ease-in-out;
+            color: var(--text-color) !important;
         }
-        .stButton>button:hover {
-            background-color: #374151 !important;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.9rem !important;
+            font-weight: 500 !important;
+            color: var(--text-color) !important;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
         
         /* Tabs Styling */
@@ -68,24 +51,37 @@ st.markdown("""
         }
         .stTabs [data-baseweb="tab"] {
             height: 3rem;
-            white-space: pre-wrap;
             background-color: transparent;
-            border-radius: 0;
             border-bottom: 2px solid transparent;
-            color: #6B7280;
+            color: var(--text-color);
+            opacity: 0.6;
             font-weight: 500;
         }
         .stTabs [aria-selected="true"] {
-            border-bottom: 2px solid #111827 !important;
-            color: #111827 !important;
+            border-bottom: 2px solid var(--text-color) !important;
+            color: var(--text-color) !important;
+            opacity: 1.0;
             font-weight: 600;
         }
         
-        /* Headings */
-        h1, h2, h3 {
-            font-weight: 600 !important;
-            color: #111827 !important;
+        /* General Headings and Text */
+        h1, h2, h3, p, span, label {
+            color: var(--text-color) !important;
             letter-spacing: -0.01em;
+        }
+        
+        /* Primary Action Button */
+        .stButton>button {
+            background-color: var(--text-color) !important;
+            color: var(--background-color) !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 0.5rem 2rem !important;
+            font-weight: 600 !important;
+            transition: all 0.2s ease-in-out;
+        }
+        .stButton>button:hover {
+            opacity: 0.85;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -112,7 +108,7 @@ live_rate = get_live_rate()
 
 # --- APP HEADER ---
 st.title("The Praxis Report")
-st.markdown("<p style='font-size: 1.1rem; color: #4B5563; margin-bottom: 2rem;'>Hyper-local market intelligence, leverage analysis, and capital structure insights.</p>", unsafe_allow_html=True)
+st.markdown("<p style='font-size: 1.1rem; opacity: 0.8; margin-bottom: 2rem;'>Hyper-local market intelligence, leverage analysis, and capital structure insights.</p>", unsafe_allow_html=True)
 
 texas_markets = [
     "Aledo", "Allen", "Celina", "Dallas", "Denton", "Forney", "Fort Worth", "Frisco", 
@@ -177,7 +173,7 @@ with tab1:
         friction_index, est_monthly_pmt = calc_friction(target_price, interest_rate, median_income)
         
         st.metric("Affordability Friction Score", f"{friction_index} / 10")
-        st.markdown(f"<p style='margin-top: 10px; font-weight: 500; color: #374151;'>Estimated Principal & Interest: <b>${est_monthly_pmt:,.2f} / mo</b></p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='margin-top: 10px; font-weight: 500;'>Estimated Principal & Interest: <b>${est_monthly_pmt:,.2f} / mo</b></p>", unsafe_allow_html=True)
         st.caption(f"Estimated Local Household Income: ${median_income:,}")
 
     st.divider()
