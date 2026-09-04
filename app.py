@@ -452,8 +452,26 @@ def generate_strategy_memo(agent_name, client_name, report_type, sub_market, pro
     ## MARKET HEALTH & FRICTION ANALYSIS
     ## STRATEGIC PLAYBOOK
     """
-    try: return client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
-    except Exception as e: return f"Error authoring strategy brief: {e}"
+    try: 
+        return client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
+    except Exception as e: 
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            return f"""## EXECUTIVE OVERVIEW
+Due to active API rate limits, this is a simulated development brief for **{client_name}**. The objective is to optimize the {report_type} strategy for the asset located at {target_context}, currently valued at ${target_price:,}. 
+
+## MACRO DYNAMICS
+With the prevailing cost of capital sitting at **{interest_rate}%**, debt service constraints are heavily influencing local liquidity. Buyers are experiencing compressed purchasing power, requiring strategic seller positioning to bridge the affordability gap without sacrificing net equity.
+
+## MARKET HEALTH & FRICTION ANALYSIS
+The current market friction score is registering at **{friction_score}/10**. 
+* **Liquidity Restraints:** Inventory absorption is slightly decelerated.
+* **Negotiation Leverage:** The environment currently dictates that well-positioned assets command premium attention, while over-priced assets face rapid stagnation.
+
+## STRATEGIC PLAYBOOK
+* **Phase 1: Capital Optimization** - Implement a 2-1 temporary rate buydown strategy to artificially lower the buyer's year-one cost of capital.
+* **Phase 2: Asset Positioning** - Pre-market the property exclusively to high-net-worth institutional networks before syndicating to the broader MLS.
+* **Phase 3: Execution** - Hold firm on base pricing while remaining highly fluid on strategic concessions to ensure a successful closing."""
+        return f"Error authoring strategy brief: {e}"
 
 def run_ai(prompt, fallback="Error"):
     if not client: return "⚠️ API Key Missing."
@@ -481,11 +499,22 @@ def render_market_intelligence():
         c_high = '#E5F0EA' if not invert_colors else '#FCE8E8'
         c_low = '#FCE8E8' if not invert_colors else '#E5F0EA'
         fig = go.Figure(go.Indicator(
-            mode="gauge+number", value=val, title={'text': title, 'font': {'color': t['text'], 'size': 14}},
-            gauge={'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 'bar': {'color': t['primary']}, 'bgcolor': "rgba(0,0,0,0)", 
-                   'steps': [{'range': [0, 90], 'color': c_low}, {'range': [90, 110], 'color': '#FDF3E1'}, {'range': [110, max_val], 'color': c_high}]}
+            mode="gauge+number", 
+            value=float(val), # Explicit float casting to prevent Plotly rendering breaks
+            title={'text': title, 'font': {'color': t['text'], 'size': 14}},
+            gauge={
+                'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 
+                'bar': {'color': t['primary']}, 
+                'bgcolor': "rgba(0,0,0,0)", 
+                'steps': [
+                    {'range': [0, 90], 'color': c_low}, 
+                    {'range': [90, 110], 'color': '#FDF3E1'}, 
+                    {'range': [110, max_val], 'color': c_high}
+                ]
+            }
         ))
-        fig.update_layout(height=220, margin=dict(l=10, r=10, t=30, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        # Increased height and adjusted margins to ensure dials render fully
+        fig.update_layout(height=260, margin=dict(l=30, r=30, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         return fig
 
     with d1: st.plotly_chart(make_dial(current_data['Supply Index'], "Supply Index (100 = Balanced)", 200, True), use_container_width=True)
