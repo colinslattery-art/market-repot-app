@@ -38,8 +38,8 @@ st.markdown("""
         .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent !important; color: #888 !important; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
-        /* General Button Styling */
-        .stButton>button, .stFormSubmitButton>button { 
+        /* General Button Styling including Download Button */
+        .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button { 
             background-color: #0F251A !important; 
             color: #FBFBF9 !important; 
             -webkit-text-fill-color: #FBFBF9 !important;
@@ -51,7 +51,7 @@ st.markdown("""
             letter-spacing: 0.15em; 
             transition: 0.4s; 
         }
-        .stButton>button:hover, .stFormSubmitButton>button:hover { 
+        .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover { 
             background-color: #C5A059 !important; 
             border-color: #C5A059 !important; 
             color: #FFFFFF !important; 
@@ -59,18 +59,9 @@ st.markdown("""
         }
         
         /* Force Form Submit Buttons to Center */
-        [data-testid="stFormSubmitButton"] {
-            display: flex;
-            justify-content: center;
-            width: 100%;
-            margin-top: 1.5rem;
-        }
-        [data-testid="stFormSubmitButton"] > button {
-            width: 250px !important;
-        }
-        
-        /* Dashboard buttons maintain full width of their columns */
-        [data-testid="stVerticalBlock"] .stButton>button { width: 100%; }
+        [data-testid="stFormSubmitButton"] { display: flex; justify-content: center; width: 100%; margin-top: 1.5rem; }
+        [data-testid="stFormSubmitButton"] > button { width: 250px !important; }
+        [data-testid="stVerticalBlock"] .stButton>button, [data-testid="stVerticalBlock"] .stDownloadButton>button { width: 100%; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -117,13 +108,7 @@ class MarketDataEngine:
             
         annual_tax = price * tax_rate
         annual_ins = price * insurance_rate
-        
-        return {
-            "tax_monthly": annual_tax / 12,
-            "ins_monthly": annual_ins / 12,
-            "hoa_monthly": hoa_monthly,
-            "tax_rate": tax_rate
-        }
+        return {"tax_monthly": annual_tax / 12, "ins_monthly": annual_ins / 12, "hoa_monthly": hoa_monthly, "tax_rate": tax_rate}
 
 engine = MarketDataEngine()
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -133,7 +118,38 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 def get_live_rate(): return 6.8
 live_rate = get_live_rate()
 
-# --- PDF GENERATOR ---
+# --- AI & PDF GENERATOR LOGIC ---
+@st.cache_data(show_spinner=False)
+def generate_strategy_memo(client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
+    """Automatically generates and caches the AI report so it loads seamlessly."""
+    if not client: return "⚠️ Please add your Gemini API Key in Streamlit Secrets."
+    target_context = f"Property: {property_address}" if property_address else f"Sub-Market: {sub_market}"
+    prompt = f"""
+    Act as Colin Slattery, an elite luxury Realtor. Write a highly professional real estate memo based strictly on the provided data.
+    Client: {client_name}. Focus: {report_type}. {target_context}. Target Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
+    Tone: Authoritative, polished, luxury advisory. DO NOT use emojis.
+    Sections:
+    1. MACRO DYNAMICS: Analysis of velocity and holding costs (Taxes/HOA).
+    2. MARKET HEALTH: What the {friction_score}/10 friction means for liquidity.
+    3. STRATEGIC PLAYBOOK: 1 concrete, actionable strategy for this specific client based on {report_type}.
+    """
+    try:
+        res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
+        return res.text
+    except Exception as e:
+        return f"Error generating strategy: {e}"
+
+def sanitize_text_for_pdf(text):
+    """Intercepts and cleans smart quotes and em-dashes to prevent the Latin-1 FPDF crash."""
+    replacements = {
+        '“': '"', '”': '"', '‘': "'", '’': "'",
+        '—': '--', '–': '-', '…': '...'
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    # Aggressive fallback: strip any remaining characters FPDF cannot handle
+    return text.encode('latin-1', 'ignore').decode('latin-1')
+
 class PraxisPDF(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 10)
@@ -155,9 +171,16 @@ def generate_pdf(client_name, market, address, text):
     pdf.set_text_color(30, 30, 30)
     pdf.set_font('Helvetica', 'B', 14)
     target_str = address if address else market
-    pdf.cell(0, 10, f"Prepared For: {client_name}  |  Target: {target_str}", 0, 1)
+    
+    clean_target = sanitize_text_for_pdf(target_str)
+    clean_client = sanitize_text_for_pdf(client_name)
+    
+    pdf.cell(0, 10, f"Prepared For: {clean_client}  |  Target: {clean_target}", 0, 1)
     pdf.ln(5)
-    for line in text.split('\n'):
+    
+    clean_text = sanitize_text_for_pdf(text)
+    
+    for line in clean_text.split('\n'):
         if line.strip() == "": pdf.ln(4)
         elif line.startswith('###') or line.startswith('##'):
             pdf.set_font('Helvetica', 'B', 12)
@@ -166,8 +189,8 @@ def generate_pdf(client_name, market, address, text):
             pdf.set_font('Helvetica', '', 11)
             pdf.set_text_color(30, 30, 30)
         else:
-            clean_line = line.replace('**', '')
-            pdf.multi_cell(0, 6, clean_line)
+            final_line = line.replace('**', '')
+            pdf.multi_cell(0, 6, final_line)
     return bytes(pdf.output(dest='S'))
 
 # --- SESSION STATE ---
@@ -218,16 +241,13 @@ if st.session_state.wizard_step <= 5:
                 default_price = st.session_state.custom_market_data['price']
                 price_input = st.text_input("Target Price ($)", value=f"${default_price:,}", label_visibility="collapsed")
                 if st.form_submit_button("Lock Price Point"):
-                    # Regex cleaning: strips symbols, spaces, commas, letters. Keeps only digits and decimals.
                     clean_str = re.sub(r'[^\d.]', '', price_input)
                     if clean_str:
                         try:
                             st.session_state.update({"target_price": int(float(clean_str)), "wizard_step": 4})
                             st.rerun()
-                        except ValueError:
-                            st.error("Please enter a valid numeric value.")
-                    else:
-                        st.error("Please enter a valid numeric value.")
+                        except ValueError: st.error("Please enter a valid numeric value.")
+                    else: st.error("Please enter a valid numeric value.")
                     
         elif st.session_state.wizard_step == 4:
             st.markdown(f"<h1>Do you have a specific target property?</h1>", unsafe_allow_html=True)
@@ -299,7 +319,7 @@ if st.session_state.wizard_step == 6:
     tab1, tab2, tab3 = st.tabs(["Advisory Brief & PDF Export", "Deal Stack Optimizer", "Risk & Capital Matrix"])
 
     with tab1:
-        c_left, c_right = st.columns([1, 2])
+        c_left, c_right = st.columns([1, 1.5])
         with c_left:
             fig_gauge = go.Figure(go.Indicator(
                 mode = "gauge+number",
@@ -319,26 +339,19 @@ if st.session_state.wizard_step == 6:
             st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
 
         with c_right:
-            if st.button("Generate Executive PDF Brief", use_container_width=True):
-                if not client: st.error("Please add your Gemini API Key in Streamlit Secrets.")
-                else:
-                    target_context = f"Property: {property_address}" if property_address else f"Sub-Market: {sub_market}"
-                    prompt = f"""
-                    Act as Colin Slattery, an elite luxury Realtor. Write a highly professional real estate memo based strictly on the provided data.
-                    Client: {client_name}. Focus: {report_type}. {target_context}. Target Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
-                    Tone: Authoritative, polished, luxury advisory. DO NOT use emojis.
-                    Sections:
-                    1. MACRO DYNAMICS: Analysis of velocity and holding costs (Taxes/HOA).
-                    2. MARKET HEALTH: What the {friction_score}/10 friction means for liquidity.
-                    3. STRATEGIC PLAYBOOK: 1 concrete, actionable strategy for this specific client based on {report_type}.
-                    """
-                    with st.spinner("Authoring Advisory Brief & Compiling PDF..."):
-                        try:
-                            res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
-                            st.markdown(f"<div style='background-color:transparent; padding: 2rem; border-top: 2px solid #0F251A; margin-top: 1rem;'>{res.text}</div>", unsafe_allow_html=True)
-                            pdf_bytes = generate_pdf(client_name, sub_market, property_address, res.text)
-                            st.download_button(label="Download Report as PDF", data=pdf_bytes, file_name=f"Praxis_{client_name.replace(' ','_')}.pdf", mime="application/pdf")
-                        except Exception as e: st.error(f"Error: {e}")
+            st.markdown("<h3 style='text-align: left; margin-bottom: 0;'>Executive Strategic Brief</h3>", unsafe_allow_html=True)
+            
+            with st.spinner("Authoring Advisory Brief..."):
+                # Automatically fetches (and caches) the AI Brief
+                ai_brief_text = generate_strategy_memo(client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score)
+            
+            # Display Natively
+            st.markdown(f"<div style='background-color:transparent; padding: 1rem 0; border-top: 2px solid #0F251A; margin-top: 0.5rem;'>{ai_brief_text}</div>", unsafe_allow_html=True)
+            
+            # Generate Downloadable PDF
+            if "Error" not in ai_brief_text and "API Key missing" not in ai_brief_text:
+                pdf_bytes = generate_pdf(client_name, sub_market, property_address, ai_brief_text)
+                st.download_button(label="Download Report as PDF", data=pdf_bytes, file_name=f"Praxis_{client_name.replace(' ','_')}.pdf", mime="application/pdf")
 
     with tab2:
         st.markdown("<h2 style='text-align: left;'>Deal Stack Optimizer</h2>", unsafe_allow_html=True)
