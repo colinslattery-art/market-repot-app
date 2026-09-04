@@ -9,23 +9,31 @@ from fpdf import FPDF
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Praxis Report | Colin Slattery", page_icon="🏛️", layout="wide")
 
-# --- ULTRA-LUXURY BRAND CSS ---
+# --- ULTRA-LUXURY BRAND CSS (LOCKED THEME) ---
+# This CSS aggressively overrides Streamlit's Dark Mode to ensure the 
+# Colin Slattery brand aesthetic renders perfectly on all devices.
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
         
-        html, body, [class*="css"] { 
-            font-family: 'Montserrat', sans-serif; 
-            background-color: #FBFBF9; /* Warm luxury cream */
-            color: #1A1A1A;
+        /* Force App Backgrounds */
+        .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"] {
+            background-color: #FBFBF9 !important;
+        }
+        
+        /* Global Typography & Text Colors */
+        html, body, [class*="css"], p, span, label, li { 
+            font-family: 'Montserrat', sans-serif !important; 
+            color: #1A1A1A !important; 
         }
         #MainMenu, footer, header {visibility: hidden;}
         
+        /* Serif Headers */
         h1, h2, h3 { 
-            font-family: 'Playfair Display', serif; 
-            font-weight: 500; 
-            color: #0F251A; /* Deep Forest Green */
-            letter-spacing: 0.02em; 
+            font-family: 'Playfair Display', serif !important; 
+            font-weight: 500 !important; 
+            color: #0F251A !important; /* Deep Forest Green */
+            letter-spacing: 0.02em !important; 
             text-align: center;
         }
         
@@ -35,7 +43,7 @@ st.markdown("""
             text-transform: uppercase;
             letter-spacing: 0.25em;
             font-size: 0.8rem;
-            color: #C5A059; /* Champagne Gold */
+            color: #C5A059 !important; /* Champagne Gold */
             margin-bottom: 2rem;
             margin-top: 1rem;
         }
@@ -53,15 +61,22 @@ st.markdown("""
         }
         div[data-baseweb="input"] > div { background-color: transparent !important; }
         
-        /* Make the typed text beautiful */
+        /* Typed Text Force Color (Crucial for Dark Mode Override) */
         input {
             font-family: 'Playfair Display', serif !important;
             font-size: 1.8rem !important;
             color: #0F251A !important;
+            -webkit-text-fill-color: #0F251A !important;
             text-align: center !important;
             padding: 1rem !important;
+            background-color: transparent !important;
         }
-        input::placeholder { color: #D1D1D1 !important; font-family: 'Montserrat', sans-serif !important; font-size: 1.2rem !important; }
+        input::placeholder { 
+            color: #A0A0A0 !important; 
+            -webkit-text-fill-color: #A0A0A0 !important;
+            font-family: 'Montserrat', sans-serif !important; 
+            font-size: 1.2rem !important; 
+        }
         
         /* Dashboard Metric Cards - Minimalist */
         div[data-testid="metric-container"] {
@@ -73,16 +88,18 @@ st.markdown("""
         }
         div[data-testid="stMetricValue"] { font-family: 'Playfair Display', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: #0F251A !important; }
         div[data-testid="stMetricLabel"] { font-size: 0.75rem !important; font-weight: 600 !important; color: #777777 !important; text-transform: uppercase; letter-spacing: 0.15em; }
+        div[data-testid="stMetricDelta"] { color: #1A1A1A !important; }
         
         /* Dashboard Tabs */
         .stTabs [data-baseweb="tab-list"] { gap: 3rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }
-        .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent; color: #888; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
+        .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent !important; color: #888 !important; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
         /* Buttons */
         .stButton>button, .stFormSubmitButton>button { 
             background-color: #0F251A !important; 
             color: #FBFBF9 !important; 
+            -webkit-text-fill-color: #FBFBF9 !important;
             border: 1px solid #0F251A !important; 
             border-radius: 0px !important; 
             padding: 0.75rem 2.5rem !important; 
@@ -97,9 +114,10 @@ st.markdown("""
             background-color: #C5A059 !important; 
             border-color: #C5A059 !important; 
             color: #FFFFFF !important; 
+            -webkit-text-fill-color: #FFFFFF !important;
         }
         
-        hr { border-color: #EAEAEA; }
+        hr { border-color: #EAEAEA !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -199,7 +217,7 @@ if st.session_state.wizard_step <= 4:
         # STEP 1: CLIENT NAME
         if st.session_state.wizard_step == 1:
             st.markdown("<h1>Who are we advising today?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the client or entity name below.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Enter the client or entity name below.</p>", unsafe_allow_html=True)
             with st.form("step1_form"):
                 client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
                 submitted = st.form_submit_button("Continue")
@@ -212,7 +230,7 @@ if st.session_state.wizard_step <= 4:
         # STEP 2: MARKET SELECTION
         elif st.session_state.wizard_step == 2:
             st.markdown(f"<h1>Which Texas sub-market are we analyzing for {st.session_state.client_name}?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the city name to verify live MLS data coverage.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Enter the city name to verify live MLS data coverage.</p>", unsafe_allow_html=True)
             with st.form("step2_form"):
                 market_input = st.text_input("Market Area", placeholder="e.g., Lindale, Richardson, Dallas", label_visibility="collapsed")
                 submitted = st.form_submit_button("Verify Data Feed")
@@ -229,10 +247,9 @@ if st.session_state.wizard_step <= 4:
         # STEP 3: ASSET PRICE
         elif st.session_state.wizard_step == 3:
             st.markdown(f"<h1>Data verified for {st.session_state.target_market}. What is the target asset value?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the estimated purchase or list price.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Enter the estimated purchase or list price.</p>", unsafe_allow_html=True)
             with st.form("step3_form"):
                 default_price = st.session_state.custom_market_data['price']
-                # Streamlit number_input isn't easily styled to match the text input, so we use text input for aesthetics
                 price_input = st.text_input("Target Price ($)", value=f"{default_price:,}", label_visibility="collapsed")
                 submitted = st.form_submit_button("Lock Asset Value")
                 if submitted:
@@ -247,7 +264,7 @@ if st.session_state.wizard_step <= 4:
         # STEP 4: STRATEGIC FOCUS
         elif st.session_state.wizard_step == 4:
             st.markdown("<h1>Finally, what is the strategic focus?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
             
             if st.button("Buyer Advisory"):
                 st.session_state.report_type = "Buyer Advisory Brief"
@@ -274,8 +291,8 @@ if st.session_state.wizard_step == 5:
     market_info = st.session_state.custom_market_data
     
     with st.sidebar:
-        st.markdown("<h2 style='text-align: center; color:#0F251A;'>PRAXIS</h2>", unsafe_allow_html=True)
-        st.markdown("<div style='text-align: center; color: #C5A059; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>STRATEGY TERMINAL</div>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color:#0F251A !important;'>PRAXIS</h2>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; color: #C5A059 !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>STRATEGY TERMINAL</div>", unsafe_allow_html=True)
         
         st.write(f"**Client:** {client_name}")
         st.write(f"**Focus:** {report_type}")
@@ -316,9 +333,9 @@ if st.session_state.wizard_step == 5:
     with tab1:
         c_left, c_right = st.columns([1, 2])
         with c_left:
-            st.markdown(f"<div style='margin-top: 1.5rem;'><span style='color:#C5A059; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.1em;'>Friction Index</span><h2 style='margin:0; font-size: 3rem; color:#0F251A;'>{friction_score} <span style='font-size:1.2rem; color:#888;'>/ 10.0</span></h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='margin-top: 1.5rem;'><span style='color:#C5A059 !important; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.1em;'>Friction Index</span><h2 style='margin:0; font-size: 3rem; color:#0F251A !important;'>{friction_score} <span style='font-size:1.2rem; color:#888 !important;'>/ 10.0</span></h2></div>", unsafe_allow_html=True)
             st.progress(friction_score / 10.0)
-            st.markdown(f"<p style='color:#777; font-size:0.9rem; margin-top: 1rem;'>Baseline Debt Service (20% Down): <br><strong style='color:#111; font-size: 1.25rem;'>${base_pmt:,.2f} / mo</strong></p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color:#777 !important; font-size:0.9rem; margin-top: 1rem;'>Baseline Debt Service (20% Down): <br><strong style='color:#1A1A1A !important; font-size: 1.25rem;'>${base_pmt:,.2f} / mo</strong></p>", unsafe_allow_html=True)
 
         with c_right:
             if st.button("Generate Executive PDF Brief", use_container_width=True):
@@ -338,7 +355,7 @@ if st.session_state.wizard_step == 5:
                             res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
                             report_content = res.text
                             
-                            st.markdown(f"<div style='background-color:#FFF; padding: 2rem; border: 1px solid #EAEAEA; border-top: 2px solid #0F251A; margin-top: 1rem;'>{report_content}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color:transparent; padding: 2rem; border-top: 2px solid #0F251A; margin-top: 1rem;'>{report_content}</div>", unsafe_allow_html=True)
                             
                             pdf_bytes = generate_pdf(client_name, sub_market, report_content)
                             st.download_button(
