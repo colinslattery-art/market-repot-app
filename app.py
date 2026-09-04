@@ -97,6 +97,30 @@ class DatabaseEngine:
             return True
         except sqlite3.IntegrityError: return False
 
+    def update_user_credentials(self, old_user, new_user, new_pwd, new_name):
+        """Restored: Admin function to edit user login details and cascade updates to their files."""
+        try:
+            with get_conn() as conn:
+                c = conn.cursor()
+                if old_user != new_user:
+                    c.execute("UPDATE users SET username=?, display_name=? WHERE username=?", (new_user, new_name, old_user))
+                    c.execute("UPDATE clients SET agent_username=? WHERE agent_username=?", (new_user, old_user))
+                else:
+                    c.execute("UPDATE users SET display_name=? WHERE username=?", (new_name, old_user))
+                
+                if new_pwd and new_pwd.strip():
+                    c.execute("UPDATE users SET password=? WHERE username=?", (hash_pw(new_pwd), new_user))
+                conn.commit()
+            return True
+        except sqlite3.IntegrityError: return False
+
+    def delete_user(self, user):
+        """Deletes user account and associated client records."""
+        with get_conn() as conn:
+            conn.execute("DELETE FROM users WHERE username=?", (user,))
+            conn.execute("DELETE FROM clients WHERE agent_username=?", (user,))
+            conn.commit()
+
     def get_scoped_users(self, role, brokerage, team):
         with get_conn() as conn:
             if role == "sysadmin": return pd.read_sql_query("SELECT username, display_name, role, brokerage, team, login_count, last_login FROM users", conn)
@@ -207,9 +231,9 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
         if st.button("Log Out", use_container_width=True): logout()
     st.divider()
     
-    t1, t2, t3 = st.tabs(["Agent Provisioning", "Intelligence Portfolios", "System Theming & Analytics"])
+    t1, t2, t3 = st.tabs(["Agent Management & Provisioning", "Intelligence Portfolios", "System Theming & Analytics"])
     with t1:
-        c1, c2 = st.columns([1, 1.5])
+        c1, c2 = st.columns([1, 1])
         with c1:
             st.markdown("### Provision Accounts")
             with st.form("new_user"):
@@ -224,8 +248,40 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
                     if db.add_user(n_user, n_pwd, n_role, n_brok, n_team, n_name): st.success("Created.")
                     else: st.error("Username exists.")
         with c2:
-            st.markdown("### Scope Users")
-            st.dataframe(db.get_scoped_users(st.session_state.role, st.session_state.brokerage, st.session_state.team), hide_index=True)
+            st.markdown("### Active Scope Users")
+            scoped_users = db.get_scoped_users(st.session_state.role, st.session_state.brokerage, st.session_state.team)
+            st.dataframe(scoped_users, hide_index=True, use_container_width=True)
+
+        st.divider()
+        st.markdown("### Modify Existing User Credentials")
+        user_list = [u for u in scoped_users['username'].tolist() if u != st.session_state.username]
+        
+        if user_list:
+            c3, c4 = st.columns([1.5, 1])
+            with c3:
+                sel_user = st.selectbox("Select User Account to Modify", user_list)
+                # Fetch existing record info
+                user_row = scoped_users[scoped_users['username'] == sel_user].iloc[0]
+                
+                with st.form("edit_user_form"):
+                    e_username = st.text_input("Username", value=sel_user)
+                    e_display = st.text_input("Display Name", value=user_row['display_name'])
+                    e_password = st.text_input("Reset Password", placeholder="Leave blank to keep current password", type="password")
+                    
+                    if st.form_submit_button("Save Credentials Update"):
+                        if db.update_user_credentials(sel_user, e_username, e_password, e_display):
+                            st.success(f"Account '{sel_user}' updated.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to update. Username may be taken.")
+            with c4:
+                st.markdown("<br><br>", unsafe_allow_html=True)
+                if st.button("Delete User & Purge Data", type="primary", use_container_width=True):
+                    db.delete_user(sel_user)
+                    st.warning(f"User '{sel_user}' deleted.")
+                    st.rerun()
+        else:
+            st.info("No sub-accounts available to edit in your current scope.")
 
     with t2:
         st.markdown("### Portfolios")
