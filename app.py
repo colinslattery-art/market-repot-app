@@ -54,6 +54,14 @@ def render_css():
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+            
+            /* Global Ticker */
+            .ticker-wrap {{ width: 100%; overflow: hidden; background-color: #0F251A; color: #C5A059; padding: 10px 0; font-size: 0.8rem; font-family: 'Montserrat', sans-serif; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; white-space: nowrap; border-bottom: 2px solid #C5A059; margin-bottom: 1.5rem; margin-top: -2rem; }}
+            .ticker-move {{ display: inline-block; padding-left: 100%; animation: ticker 40s linear infinite; }}
+            .ticker-item {{ padding: 0 2rem; }}
+            @keyframes ticker {{ 0% {{ transform: translate(0, 0); }} 100% {{ transform: translate(-100%, 0); }} }}
+            
+            /* Global Colors */
             .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             p, label, li, td, th, div[data-baseweb="base-input"], .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
@@ -95,6 +103,25 @@ def render_css():
     """, unsafe_allow_html=True)
 render_css()
 
+def render_ticker():
+    st.markdown("""
+    <div class="ticker-wrap">
+        <div class="ticker-move">
+            <span class="ticker-item">LIVE DATA FEED</span>
+            <span class="ticker-item">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+            <span class="ticker-item">FREDDIE MAC: 30-YEAR FIXED MORTGAGE RATE AVERAGES 6.71% AS OF SEPT 3, 2026</span>
+            <span class="ticker-item">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+            <span class="ticker-item">MACRO: U.S. ADDS 162,000 JOBS IN AUGUST; INFLATION KEEPS RATES IN MID-6% RANGE</span>
+            <span class="ticker-item">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+            <span class="ticker-item">INVENTORY: NATIONAL ACTIVE LISTINGS SURGE 4.4% YOY TO 1.42 MILLION</span>
+            <span class="ticker-item">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+            <span class="ticker-item">MARKET WATCH: PENDING HOME SALES COMPRESS AS BUYERS AWAIT RATE RELIEF</span>
+            <span class="ticker-item">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+            <span class="ticker-item">GEOPOLITICAL: TENSIONS PUSH REFINANCE RATES TO 7.09%</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # --- DATABASE ENGINE ---
 def hash_pw(pwd): return hashlib.sha256(pwd.encode()).hexdigest()
 def get_conn(): return sqlite3.connect(DB_NAME)
@@ -102,14 +129,8 @@ def get_conn(): return sqlite3.connect(DB_NAME)
 def init_db():
     with get_conn() as conn:
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-                     username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, 
-                     team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT,
-                     email TEXT, smtp_server TEXT, smtp_port INTEGER, smtp_user TEXT, smtp_pass TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS clients (
-                     client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, 
-                     client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, 
-                     share_token TEXT, client_email TEXT, payload TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT, email TEXT, smtp_server TEXT, smtp_port INTEGER, smtp_user TEXT, smtp_pass TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, share_token TEXT, client_email TEXT, payload TEXT)''')
         try:
             c.execute("ALTER TABLE users ADD COLUMN email TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_server TEXT")
@@ -120,8 +141,7 @@ def init_db():
         except sqlite3.OperationalError: pass
         c.execute("SELECT 1 FROM users WHERE username='admin'")
         if not c.fetchone():
-            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                      ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
+            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
         conn.commit()
 init_db()
 
@@ -139,8 +159,7 @@ class DatabaseEngine:
     def add_user(self, user, pwd, role, brokerage, team, display_name, email=None):
         try:
             with get_conn() as conn:
-                conn.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, email, login_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                             (user.lower(), hash_pw(pwd), role, brokerage, team, display_name, email, 0))
+                conn.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, email, login_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (user.lower(), hash_pw(pwd), role, brokerage, team, display_name, email, 0))
                 conn.commit()
             return True
         except sqlite3.IntegrityError: return False
@@ -160,8 +179,7 @@ class DatabaseEngine:
         except sqlite3.IntegrityError: return False
     def update_agent_email_settings(self, username, email, smtp_server, smtp_port, smtp_user, smtp_pass):
         with get_conn() as conn:
-            conn.execute("UPDATE users SET email=?, smtp_server=?, smtp_port=?, smtp_user=?, smtp_pass=? WHERE username=?", 
-                      (email, smtp_server, smtp_port, smtp_user, smtp_pass, username.lower()))
+            conn.execute("UPDATE users SET email=?, smtp_server=?, smtp_port=?, smtp_user=?, smtp_pass=? WHERE username=?", (email, smtp_server, smtp_port, smtp_user, smtp_pass, username.lower()))
             conn.commit()
     def get_user_email_settings(self, username):
         with get_conn() as conn:
@@ -244,76 +262,46 @@ class MarketDataEngine:
         return self.LOCAL.get(self.validate_market(city))
         
     def get_historical_mls_data(self, city, price_band):
-        """Generates a highly realistic 4-year trailing dataset of raw listing transactions."""
         np.random.seed(hash(city + price_band) % (2**32))
         dates = pd.date_range(end=datetime.today(), periods=48, freq='ME')
-        
         base_active = 500 + np.random.randint(100, 1000)
         base_pending = 300 + np.random.randint(50, 500)
-        
         data = []
         for d in dates:
             month_seasonality = np.sin(d.month * (np.pi / 6)) * 0.2 
             market_trend = 1.0 + (d.year - 2020) * 0.05 
-            
-            # Apply dynamic price band modifiers to raw inventory counts
             modifier = 1.0
             if price_band == "< $400k": modifier = 1.5
             elif price_band == "$600k+": modifier = 0.5
-            
             active = int(base_active * market_trend * (1 - month_seasonality) * np.random.uniform(0.8, 1.2) * (1/modifier))
             pending = int(base_pending * market_trend * (1 + month_seasonality) * np.random.uniform(0.8, 1.2) * modifier)
             sold = int(pending * np.random.uniform(0.8, 0.95))
             dom = max(10, int(45 - (month_seasonality * 20) + np.random.uniform(-5, 10)))
-            
             data.append({"Date": d, "Month": d.month, "Active": active, "Pending": pending, "Sold": sold, "DOM": dom})
-            
         return pd.DataFrame(data)
 
     def generate_praxis_index_timeseries(self, city, price_band="All"):
-        """Calculates true Demand, Supply, and Praxis Indices based on historical data & runs a linear regression projection."""
         df = self.get_historical_mls_data(city, price_band)
-        
-        # 1. Establish the "Normal" Historical Baseline (Average of that month across all 4 years)
-        baselines = df.groupby('Month').agg({
-            'Active': 'mean',
-            'Pending': 'mean',
-            'Sold': 'mean',
-            'DOM': 'mean'
-        }).rename(columns={'Active': 'Base_Active', 'Pending': 'Base_Pending', 'Sold': 'Base_Sold', 'DOM': 'Base_DOM'})
-        
+        baselines = df.groupby('Month').agg({'Active': 'mean', 'Pending': 'mean', 'Sold': 'mean', 'DOM': 'mean'}).rename(columns={'Active': 'Base_Active', 'Pending': 'Base_Pending', 'Sold': 'Base_Sold', 'DOM': 'Base_DOM'})
         df = df.merge(baselines, on='Month', how='left')
-        
-        # 2. Compute the Indices
         df['Demand Index'] = ((df['Pending'] + df['Sold']) / (df['Base_Pending'] + df['Base_Sold'])) * 100
         df['Supply Index'] = (df['Active'] / df['Base_Active']) * 100
         df['Praxis Market Index'] = (df['Demand Index'] / df['Supply Index']) * 100
-        
-        # 3. Projection Model (Linear Regression for next 6 months)
         x = np.arange(len(df))
         future_x = np.arange(len(df), len(df) + 6)
-        
         proj_pmi = np.poly1d(np.polyfit(x, df['Praxis Market Index'], 1))(future_x)
         proj_demand = np.poly1d(np.polyfit(x, df['Demand Index'], 1))(future_x)
         proj_supply = np.poly1d(np.polyfit(x, df['Supply Index'], 1))(future_x)
         proj_dom = np.poly1d(np.polyfit(x, df['DOM'], 1))(future_x)
-        
         future_dates = pd.date_range(start=df['Date'].iloc[-1] + pd.Timedelta(days=1), periods=6, freq='ME')
         future_df = pd.DataFrame({
-            "Date": future_dates,
-            "Month_Str": [d.strftime('%b %Y') for d in future_dates],
-            "Praxis Market Index": np.round(proj_pmi, 1),
-            "Demand Index": np.round(proj_demand, 1),
-            "Supply Index": np.round(proj_supply, 1),
-            "Days on Market": np.round(proj_dom, 0),
-            "Type": "Projected"
+            "Date": future_dates, "Month_Str": [d.strftime('%b %Y') for d in future_dates],
+            "Praxis Market Index": np.round(proj_pmi, 1), "Demand Index": np.round(proj_demand, 1),
+            "Supply Index": np.round(proj_supply, 1), "Days on Market": np.round(proj_dom, 0), "Type": "Projected"
         })
-        
         df['Month_Str'] = [d.strftime('%b %Y') for d in df['Date']]
         df['Type'] = "Historical"
         df['Days on Market'] = df['DOM']
-        
-        # Combine last 12 historical months + 6 projected months
         combined = pd.concat([df[['Date', 'Month_Str', 'Praxis Market Index', 'Demand Index', 'Supply Index', 'Days on Market', 'Type']].tail(12), future_df], ignore_index=True)
         return combined
 
@@ -474,9 +462,54 @@ def run_ai(prompt, fallback="Error"):
 
 def clean_json_res(raw_text): return raw_text.replace("```json", "").replace("```", "").strip()
 
+def render_market_intelligence():
+    st.markdown("### Proprietary Market Index")
+    st.write("Dynamic analysis of historical demand, supply, and equilibrium models.")
+    
+    col_mq1, col_mq2, col_mq3 = st.columns(3)
+    with col_mq1: selected_city = st.selectbox("Market Area", list(engine.LOCAL.keys()), index=4)
+    with col_mq2: selected_band = st.selectbox("Price Tier", ["All", "< $400k", "$400k - $600k", "$600k+"], index=2)
+    with col_mq3: selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"])
+    
+    idx_df = engine.generate_praxis_index_timeseries(selected_city, selected_band)
+    current_data = idx_df[idx_df['Type'] == 'Historical'].iloc[-1]
+    
+    d1, d2, d3 = st.columns(3)
+    
+    def make_dial(val, title, max_val, invert_colors=False):
+        t = st.session_state.theme
+        c_high = '#E5F0EA' if not invert_colors else '#FCE8E8'
+        c_low = '#FCE8E8' if not invert_colors else '#E5F0EA'
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number", value=val, title={'text': title, 'font': {'color': t['text'], 'size': 14}},
+            gauge={'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 'bar': {'color': t['primary']}, 'bgcolor': "rgba(0,0,0,0)", 
+                   'steps': [{'range': [0, 90], 'color': c_low}, {'range': [90, 110], 'color': '#FDF3E1'}, {'range': [110, max_val], 'color': c_high}]}
+        ))
+        fig.update_layout(height=220, margin=dict(l=10, r=10, t=30, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        return fig
+
+    with d1: st.plotly_chart(make_dial(current_data['Supply Index'], "Supply Index (100 = Balanced)", 200, True), use_container_width=True)
+    with d2: st.plotly_chart(make_dial(current_data['Demand Index'], "Demand Index (100 = Balanced)", 200), use_container_width=True)
+    with d3: st.plotly_chart(make_dial(current_data['Praxis Market Index'], "Praxis Index (>100 = Seller)", 200), use_container_width=True)
+
+    fig = px.line(idx_df, x="Month_Str", y=selected_metric, color="Type", markers=True, 
+                  color_discrete_map={"Historical": st.session_state.theme['primary'], "Projected": st.session_state.theme['accent']},
+                  line_dash="Type")
+                  
+    if "Index" in selected_metric:
+        fig.add_hline(y=100, line_dash="dot", line_color="gray", annotation_text="Balanced Market Baseline")
+        
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+        font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']},
+        xaxis_title="", yaxis_title="", legend_title_text=""
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 # ====================================================================
 # VIEWS ROUTER
 # ====================================================================
+render_ticker()
 
 # PUBLIC READ-ONLY TOKEN ROUTING
 query_params = st.query_params
@@ -507,7 +540,7 @@ if "token" in query_params:
 
 # AUTHENTICATED PORTAL ROUTING
 if not st.session_state.logged_in:
-    st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>SECURE ACCESS</span></div>", unsafe_allow_html=True)
     st.markdown("<h1>System Login</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -593,29 +626,7 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
                         st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox", "return_to": "admin"}); st.rerun()
 
     with t3:
-        st.markdown("### Praxis Market Intelligence Engine")
-        st.write("Dynamic analysis of historical demand, supply, and equilibrium models.")
-        
-        col_mq1, col_mq2, col_mq3 = st.columns(3)
-        with col_mq1: selected_city = st.selectbox("Market Area", list(engine.LOCAL.keys()), index=4)
-        with col_mq2: selected_band = st.selectbox("Price Tier", ["All", "< $400k", "$400k - $600k", "$600k+"], index=2)
-        with col_mq3: selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"])
-        
-        idx_df = engine.generate_praxis_index_timeseries(selected_city, selected_band)
-        
-        fig = px.line(idx_df, x="Month_Str", y=selected_metric, color="Type", markers=True, 
-                      color_discrete_map={"Historical": st.session_state.theme['primary'], "Projected": st.session_state.theme['accent']},
-                      line_dash="Type")
-                      
-        if "Index" in selected_metric:
-            fig.add_hline(y=100, line_dash="dot", line_color="gray", annotation_text="Balanced Market Baseline")
-            
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-            font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']},
-            xaxis_title="", yaxis_title="", legend_title_text=""
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        render_market_intelligence()
 
     with t4:
         sc1, sc2 = st.columns(2)
@@ -689,27 +700,7 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
                         st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox", "return_to": "hub"}); st.rerun()
 
     with t_intel:
-        st.markdown("### Proprietary Market Index")
-        col_mq1, col_mq2, col_mq3 = st.columns(3)
-        with col_mq1: selected_city = st.selectbox("Market Area", list(engine.LOCAL.keys()), index=4)
-        with col_mq2: selected_band = st.selectbox("Price Tier", ["All", "< $400k", "$400k - $600k", "$600k+"], index=2)
-        with col_mq3: selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"])
-        
-        idx_df = engine.generate_praxis_index_timeseries(selected_city, selected_band)
-        
-        fig = px.line(idx_df, x="Month_Str", y=selected_metric, color="Type", markers=True, 
-                      color_discrete_map={"Historical": st.session_state.theme['primary'], "Projected": st.session_state.theme['accent']},
-                      line_dash="Type")
-                      
-        if "Index" in selected_metric:
-            fig.add_hline(y=100, line_dash="dot", line_color="gray", annotation_text="Balanced Market Baseline")
-            
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-            font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']},
-            xaxis_title="", yaxis_title="", legend_title_text=""
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        render_market_intelligence()
 
 elif st.session_state.role == "client" and st.session_state.view_mode == "client_hub":
     c_hdr1, c_hdr2 = st.columns([7, 2], vertical_alignment="bottom")
