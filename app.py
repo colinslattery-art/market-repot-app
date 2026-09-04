@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time
 import re
 import sqlite3
 import hashlib
@@ -12,203 +11,154 @@ from google import genai
 from fpdf import FPDF
 import plotly.graph_objects as go
 
-# --- PAGE CONFIGURATION ---
+# --- CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Praxis Terminal", page_icon="🏛️", layout="wide")
+DB_NAME = "praxis_saas.db"
+THEME_LIGHT = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text": "#1A1A1A", "font_header": "Playfair Display", "font_body": "Montserrat"}
+THEME_DARK = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "text": "#EAEAEA", "font_header": "Playfair Display", "font_body": "Montserrat"}
 
-# --- INITIALIZE THEME STATE ---
-if "theme" not in st.session_state:
-    st.session_state.theme = {
-        "primary": "#0F251A",    # Forest Green
-        "accent": "#C5A059",     # Champagne Gold
-        "bg": "#FBFBF9",         # Cream
-        "text": "#1A1A1A",       # Dark Slate
-        "font_header": "Playfair Display",
-        "font_body": "Montserrat"
-    }
+def init_state():
+    defaults = {"theme": THEME_LIGHT, "logged_in": False, "username": None, "role": None, "brokerage": None, "team": None, "display_name": None, "view_mode": "login", "wizard_step": 1, "temp_client": {}, "active_client_id": None}
+    for k, v in defaults.items():
+        if k not in st.session_state: st.session_state[k] = v
+init_state()
 
-# --- DYNAMIC CSS INJECTION ---
+def logout(): st.session_state.clear(); init_state(); st.rerun()
+
+# --- CSS INJECTION ---
 def render_css():
     t = st.session_state.theme
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
-            
             .stApp, .main, .block-container {{ background-color: {t['bg']} !important; }}
             html, body, p, span, label, li, td, th {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             #MainMenu, footer, header {{visibility: hidden;}}
-            
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; letter-spacing: 0.02em !important; text-align: center; }}
             .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; }}
-            
             [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; }}
             div[data-baseweb="input"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
             div[data-baseweb="input"] > div {{ background-color: transparent !important; }}
-            
             input {{ font-family: '{t['font_header']}', serif !important; font-size: 1.5rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 1rem !important; background-color: transparent !important; }}
             input::placeholder {{ color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 1rem !important; }}
-            
             .client-card {{ background-color: transparent; border: 1px solid #EAEAEA; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; }}
             .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid {t['accent']}; }}
             .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.5rem; color: {t['primary']}; }}
             .client-card p {{ font-size: 0.8rem; color: #777; text-transform: uppercase; letter-spacing: 0.1em; }}
-            
             div[data-testid="metric-container"] {{ background-color: transparent !important; border: none !important; border-left: 2px solid {t['accent']} !important; padding: 0.5rem 1.5rem; box-shadow: none !important; }}
             div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
             div[data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; font-weight: 600 !important; color: {t['text']} !important; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }}
-            
             .stTabs [data-baseweb="tab-list"] {{ gap: 3rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
             .stTabs [data-baseweb="tab"] {{ height: 4rem; background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }}
             .stTabs [aria-selected="true"] {{ border-bottom: 2px solid {t['primary']} !important; color: {t['primary']} !important; font-weight: 600; opacity: 1; }}
-            
             .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {{ background-color: {t['primary']} !important; color: {t['bg']} !important; -webkit-text-fill-color: {t['bg']} !important; border: 1px solid {t['primary']} !important; border-radius: 0px !important; padding: 0.75rem 1.5rem !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.4s; height: auto !important; min-height: 3rem; }}
             .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; }}
-            
+            [data-testid="stFormSubmitButton"] {{ display: flex; justify-content: center; width: 100%; margin-top: 1.5rem; }}
+            [data-testid="stFormSubmitButton"] > button {{ width: 250px !important; }}
             .dataframe {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
             .dataframe th {{ background-color: {t['primary']}; color: {t['bg']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; }}
             .dataframe td {{ padding: 1rem; border-bottom: 1px solid #EAEAEA; background-color: transparent; color: {t['text']} !important; }}
         </style>
     """, unsafe_allow_html=True)
-
 render_css()
 
-# ====================================================================
-# SECURE MULTI-TENANT DATABASE ENGINE (SQLITE)
-# ====================================================================
-def hash_password(password): return hashlib.sha256(password.encode()).hexdigest()
-
-DB_NAME = "praxis_saas.db"
+# --- DATABASE ENGINE ---
+def hash_pw(pwd): return hashlib.sha256(pwd.encode()).hexdigest()
+def get_conn(): return sqlite3.connect(DB_NAME)
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS clients 
-                 (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, 
-                  client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, payload TEXT)''')
-    
-    # DB Upgrade for Telemetry (Safe execution if already exists)
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0")
-        c.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
-    except sqlite3.OperationalError: pass
-    
-    c.execute("SELECT * FROM users WHERE username='admin'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                  ("admin", hash_password("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
-    conn.commit(); conn.close()
-
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, payload TEXT)''')
+        c.execute("SELECT 1 FROM users WHERE username='admin'")
+        if not c.fetchone():
+            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
+        conn.commit()
 init_db()
 
 class DatabaseEngine:
-    def authenticate(self, username, password):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT role, brokerage, team, display_name FROM users WHERE username=? AND password=?", (username, hash_password(password)))
-        result = c.fetchone()
-        if result:
-            c.execute("UPDATE users SET login_count = login_count + 1, last_login = ? WHERE username = ?", (datetime.now().isoformat(), username))
-            conn.commit()
-            conn.close()
-            return {"role": result[0], "brokerage": result[1], "team": result[2], "display_name": result[3]}
-        conn.close()
+    def authenticate(self, user, pwd):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT role, brokerage, team, display_name FROM users WHERE username=? AND password=?", (user, hash_pw(pwd)))
+            res = c.fetchone()
+            if res:
+                c.execute("UPDATE users SET login_count = login_count + 1, last_login = ? WHERE username = ?", (datetime.now().isoformat(), user))
+                conn.commit()
+                return {"role": res[0], "brokerage": res[1], "team": res[2], "display_name": res[3]}
         return None
 
-    def add_user(self, username, password, role, brokerage, team, display_name):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
+    def add_user(self, user, pwd, role, brokerage, team, display_name):
         try:
-            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                      (username, hash_password(password), role, brokerage, team, display_name, 0))
-            conn.commit(); success = True
-        except sqlite3.IntegrityError: success = False
-        conn.close()
-        return success
+            with get_conn() as conn:
+                conn.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", (user, hash_pw(pwd), role, brokerage, team, display_name, 0))
+                conn.commit()
+            return True
+        except sqlite3.IntegrityError: return False
 
     def get_scoped_users(self, role, brokerage, team):
-        conn = sqlite3.connect(DB_NAME)
-        if role == "sysadmin": df = pd.read_sql_query("SELECT username, display_name, role, brokerage, team, login_count, last_login FROM users", conn)
-        elif role == "broker": df = pd.read_sql_query(f"SELECT username, display_name, role, team, login_count FROM users WHERE brokerage='{brokerage}' AND role!='sysadmin'", conn)
-        else: df = pd.read_sql_query(f"SELECT username, display_name, role, login_count FROM users WHERE team='{team}' AND role='agent'", conn)
-        conn.close(); return df
+        with get_conn() as conn:
+            if role == "sysadmin": return pd.read_sql_query("SELECT username, display_name, role, brokerage, team, login_count, last_login FROM users", conn)
+            if role == "broker": return pd.read_sql_query(f"SELECT username, display_name, role, team, login_count FROM users WHERE brokerage='{brokerage}' AND role!='sysadmin'", conn)
+            return pd.read_sql_query(f"SELECT username, display_name, role, login_count FROM users WHERE team='{team}' AND role='agent'", conn)
 
-    def save_client(self, client_id, username, brokerage, team, client_data):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        client_data['agent_owner'] = username
-        payload = json.dumps(client_data)
-        c.execute('''INSERT OR REPLACE INTO clients 
-                     (client_id, agent_username, brokerage, team, client_name, market, target_price, address, report_type, payload) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (client_id, username, brokerage, team, client_data['name'], client_data['market'], 
-                   client_data['price'], client_data['address'], client_data['type'], payload))
-        conn.commit(); conn.close()
+    def save_client(self, cid, user, brokerage, team, data):
+        data['agent_owner'] = user
+        with get_conn() as conn:
+            conn.execute("INSERT OR REPLACE INTO clients (client_id, agent_username, brokerage, team, client_name, market, target_price, address, report_type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (cid, user, brokerage, team, data['name'], data['market'], data['price'], data['address'], data['type'], json.dumps(data)))
+            conn.commit()
 
-    def get_scoped_clients(self, role, username, brokerage, team):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        if role == "sysadmin": c.execute("SELECT client_id, agent_username, payload FROM clients")
-        elif role == "broker": c.execute("SELECT client_id, agent_username, payload FROM clients WHERE brokerage=?", (brokerage,))
-        elif role == "team_admin": c.execute("SELECT client_id, agent_username, payload FROM clients WHERE team=?", (team,))
-        else: c.execute("SELECT client_id, agent_username, payload FROM clients WHERE agent_username=?", (username,))
-        rows = c.fetchall()
-        conn.close()
-        return [{"client_id": r[0], "agent": r[1], "data": json.loads(r[2])} for r in rows]
+    def get_scoped_clients(self, role, user, brokerage, team):
+        with get_conn() as conn:
+            c = conn.cursor()
+            if role == "sysadmin": c.execute("SELECT client_id, agent_username, payload FROM clients")
+            elif role == "broker": c.execute("SELECT client_id, agent_username, payload FROM clients WHERE brokerage=?", (brokerage,))
+            elif role == "team_admin": c.execute("SELECT client_id, agent_username, payload FROM clients WHERE team=?", (team,))
+            else: c.execute("SELECT client_id, agent_username, payload FROM clients WHERE agent_username=?", (user,))
+            return [{"client_id": r[0], "agent": r[1], "data": json.loads(r[2])} for r in c.fetchall()]
 
-    def get_client_by_id(self, client_id):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT payload FROM clients WHERE client_id=?", (client_id,))
-        row = c.fetchone()
-        conn.close()
-        return json.loads(row[0]) if row else None
-        
+    def get_client_by_id(self, cid):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT payload FROM clients WHERE client_id=?", (cid,))
+            row = c.fetchone()
+            return json.loads(row[0]) if row else None
+            
     def get_telemetry(self):
-        conn = sqlite3.connect(DB_NAME)
-        df_u = pd.read_sql_query("SELECT * FROM users", conn)
-        df_c = pd.read_sql_query("SELECT * FROM clients", conn)
-        conn.close()
-        return df_u, df_c
+        with get_conn() as conn: return pd.read_sql_query("SELECT * FROM users", conn), pd.read_sql_query("SELECT * FROM clients", conn)
 
 db = DatabaseEngine()
 
-# --- MARKET DATA & AI ---
+# --- MARKET DATA ENGINE ---
 class MarketDataEngine:
-    def __init__(self):
-        self.local_fallback = {
-            "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
-            "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
-            "Frisco": {"income": 145000, "price": 710000, "dom": 39, "inventory": 620},
-            "Dallas": {"income": 63000, "price": 435000, "dom": 44, "inventory": 3400},
-            "Tyler": {"income": 61000, "price": 315000, "dom": 52, "inventory": 450},
-            "Lindale": {"income": 68000, "price": 325000, "dom": 45, "inventory": 110},
-        }
-    def validate_market(self, city_name):
-        city_clean = city_name.title().split(',')[0].strip()
-        return city_clean if city_clean in self.local_fallback else None
-    def get_market_metrics(self, city_name):
-        city = self.validate_market(city_name)
-        return self.local_fallback[city] if city else None
+    LOCAL = {"Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145}, "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210}, "Frisco": {"income": 145000, "price": 710000, "dom": 39, "inventory": 620}, "Dallas": {"income": 63000, "price": 435000, "dom": 44, "inventory": 3400}, "Tyler": {"income": 61000, "price": 315000, "dom": 52, "inventory": 450}, "Lindale": {"income": 68000, "price": 325000, "dom": 45, "inventory": 110}}
+    def validate_market(self, city):
+        clean = city.title().split(',')[0].strip()
+        return clean if clean in self.LOCAL else None
+    def get_market_metrics(self, city):
+        return self.LOCAL.get(self.validate_market(city))
 
 engine = MarketDataEngine()
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", "")) if st.secrets.get("GEMINI_API_KEY") else None
 
 @st.cache_data(ttl=86400)
 def get_live_rate(): return 6.8
 live_rate = get_live_rate()
 
-def sanitize_text_for_pdf(text):
-    replacements = {'“': '"', '”': '"', '‘': "'", '’': "'", '—': '--', '–': '-', '…': '...'}
-    for k, v in replacements.items(): text = text.replace(k, v)
+def calc_mortgage(price, rate, dp_pct):
+    loan = price * (1 - (dp_pct / 100))
+    return loan * ((rate / 100) / 12 * (1 + (rate / 100) / 12)**360) / ((1 + (rate / 100) / 12)**360 - 1) if loan > 0 else 0
+
+# --- PDF & AI LOGIC ---
+def sanitize_pdf(text):
+    for k, v in {'“':'"', '”':'"', '‘':"'", '’':"'", '—':'--', '–':'-', '…':'...'}.items(): text = text.replace(k, v)
     return text.encode('latin-1', 'ignore').decode('latin-1')
 
 class PraxisPDF(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 10); self.set_text_color(15, 37, 26) 
-        brk = st.session_state.get('brokerage', 'PRAXIS TERMINAL')
-        self.cell(0, 10, f'INTELLIGENCE REPORT | {brk.upper()}', 0, 1, 'R')
+        self.cell(0, 10, f"INTELLIGENCE REPORT | {st.session_state.get('brokerage', 'PRAXIS').upper()}", 0, 1, 'R')
         self.set_draw_color(197, 160, 89); self.line(10, 20, 200, 20); self.ln(10)
     def footer(self):
         self.set_y(-15); self.set_font('Helvetica', 'I', 8); self.set_text_color(150, 150, 150)
@@ -216,388 +166,232 @@ class PraxisPDF(FPDF):
 
 def generate_pdf(client_name, market, address, text):
     pdf = PraxisPDF(); pdf.add_page(); pdf.set_font('Helvetica', '', 11); pdf.set_text_color(30, 30, 30); pdf.set_font('Helvetica', 'B', 14)
-    target_str = address if address else market
-    pdf.cell(0, 10, f"Prepared For: {sanitize_text_for_pdf(client_name)}  |  Target: {sanitize_text_for_pdf(target_str)}", 0, 1); pdf.ln(5)
-    for line in sanitize_text_for_pdf(text).split('\n'):
-        if line.strip() == "": pdf.ln(4)
-        elif line.startswith('###') or line.startswith('##'):
+    pdf.cell(0, 10, f"Prepared For: {sanitize_pdf(client_name)}  |  Target: {sanitize_pdf(address if address else market)}", 0, 1); pdf.ln(5)
+    for line in sanitize_pdf(text).split('\n'):
+        if not line.strip(): pdf.ln(4)
+        elif line.startswith('##'):
             pdf.set_font('Helvetica', 'B', 12); pdf.set_text_color(15, 37, 26)
             pdf.multi_cell(0, 8, line.replace('#', '').strip()); pdf.set_font('Helvetica', '', 11); pdf.set_text_color(30, 30, 30)
         else: pdf.multi_cell(0, 6, line.replace('**', ''))
     return pdf.output(dest='S').encode('latin-1')
 
-def generate_strategy_memo(agent_name, client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
+def run_ai(prompt, fallback="Error"):
     if not client: return "⚠️ API Key Missing."
-    target_context = f"Property: {property_address}" if property_address else f"Sub-Market: {sub_market}"
-    prompt = f"""
-    Act as {agent_name}, an elite luxury Realtor. Write a highly professional real estate memo.
-    Client: {client_name}. Focus: {report_type}. {target_context}. Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
-    Tone: Authoritative, polished. DO NOT use emojis.
-    Sections: 1. MACRO DYNAMICS. 2. MARKET HEALTH. 3. STRATEGIC PLAYBOOK (1 actionable strategy).
-    """
     try: return client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
-    except Exception as e: return f"Error: {e}"
-
-def generate_system_stats():
-    if not client: return "System running optimally."
-    df_u, df_c = db.get_telemetry()
-    total_logins = df_u['login_count'].sum() if not df_u.empty else 0
-    buyer_reps = len(df_c[df_c['report_type'] == 'Buyer Advisory Brief']) if not df_c.empty else 0
-    seller_reps = len(df_c[df_c['report_type'] == 'Seller Disposition Strategy']) if not df_c.empty else 0
-    
-    prompt = f"""
-    Write a 2-paragraph system management briefing based on this telemetry:
-    Total Users: {len(df_u)}. Total Lifetime Logins: {total_logins}.
-    Total Intelligence Briefs: {len(df_c)} ({buyer_reps} Buyer briefs, {seller_reps} Seller briefs).
-    Tone: Technical, institutional SaaS.
-    """
-    try: return client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
-    except: return "Analytics generation offline."
-
-def process_ai_theme(command):
-    prompt = f"""
-    You are an expert UI designer. The user wants to change the theme based on: "{command}".
-    Respond ONLY with a valid JSON object matching exactly this schema, using appropriate HEX colors and Google Fonts:
-    {{"primary": "#HEX", "accent": "#HEX", "bg": "#HEX", "text": "#HEX", "font_header": "Font Name", "font_body": "Font Name"}}
-    Do not include markdown blocks or any other text.
-    """
-    try:
-        res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
-        clean_json = res.replace('```json', '').replace('```', '').strip()
-        new_theme = json.loads(clean_json)
-        st.session_state.theme.update(new_theme)
-        return True
-    except: return False
-
-# --- STATE MANAGEMENT ---
-if "logged_in" not in st.session_state:
-    st.session_state.update({"logged_in": False, "username": None, "role": None, "brokerage": None, "team": None, "display_name": None, "view_mode": "login", "wizard_step": 1, "temp_client": {}})
-
-def logout(): st.session_state.clear(); st.rerun()
+    except: return fallback
 
 # ====================================================================
-# VIEW 0: WHITE-LABELED LOGIN PORTAL
+# VIEWS ROUTER
 # ====================================================================
 if not st.session_state.logged_in:
     st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='brand-header'>PRAXIS TERMINAL | SECURE ACCESS</div>", unsafe_allow_html=True)
+    st.markdown("<div class='brand-header'>SECURE ACCESS</div>", unsafe_allow_html=True)
     st.markdown("<h1>System Login</h1>", unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
-            user = st.text_input("Username", placeholder="Username", label_visibility="collapsed")
-            pwd = st.text_input("Password", type="password", placeholder="Password", label_visibility="collapsed")
-            c_sub1, c_sub2, c_sub3 = st.columns([1, 2, 1])
-            with c_sub2:
-                if st.form_submit_button("Authenticate", use_container_width=True):
-                    auth_data = db.authenticate(user, pwd)
-                    if auth_data:
-                        st.session_state.update({"logged_in": True, "username": user, "role": auth_data['role'], "brokerage": auth_data['brokerage'], "team": auth_data['team'], "display_name": auth_data['display_name']})
-                        st.session_state.view_mode = "hub" if auth_data['role'] == "agent" else "admin"
-                        st.rerun()
-                    else: st.error("Authentication failed. Invalid credentials.")
+            user = st.text_input("Username", placeholder="Enter Username", label_visibility="collapsed")
+            pwd = st.text_input("Password", type="password", placeholder="Enter Password", label_visibility="collapsed")
+            if st.form_submit_button("Authenticate"):
+                auth = db.authenticate(user, pwd)
+                if auth:
+                    st.session_state.update({"logged_in": True, "username": user, **auth, "view_mode": "hub" if auth['role'] == "agent" else "admin"})
+                    st.rerun()
+                else: st.error("Invalid credentials.")
 
-# ====================================================================
-# VIEW 1: MANAGEMENT COMMAND CENTER 
-# ====================================================================
 elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.session_state.view_mode == "admin":
     st.markdown(f"<div class='brand-header'>{st.session_state.brokerage} | {st.session_state.role.upper()}</div>", unsafe_allow_html=True)
-    st.markdown(f"<h1>Command Center</h1>", unsafe_allow_html=True)
-    
-    _, col_logout, _ = st.columns([2, 1, 2])
-    with col_logout:
+    st.markdown("<h1>Command Center</h1>", unsafe_allow_html=True)
+    _, col_out, _ = st.columns([2, 1, 2])
+    with col_out: 
         if st.button("Log Out", use_container_width=True): logout()
     st.divider()
     
     t1, t2, t3 = st.tabs(["Agent Provisioning", "Intelligence Portfolios", "System Theming & Analytics"])
-    
     with t1:
-        st.markdown("### Provision Sub-Accounts")
         c1, c2 = st.columns([1, 1.5])
         with c1:
+            st.markdown("### Provision Accounts")
             with st.form("new_user"):
-                n_user = st.text_input("New Username")
-                n_pwd = st.text_input("Initial Password", type="password")
-                n_name = st.text_input("Display Name (e.g., Jane Doe)")
-                
+                n_user, n_pwd, n_name = st.text_input("Username"), st.text_input("Password", type="password"), st.text_input("Display Name")
                 if st.session_state.role == "sysadmin":
-                    n_brokerage = st.text_input("Brokerage Name", value="Real Broker LLC")
-                    n_team = st.text_input("Team Name", value="Independent")
+                    n_brok, n_team = st.text_input("Brokerage Name", "Real Broker LLC"), st.text_input("Team Name", "Independent")
                     n_role = st.selectbox("Role", ["agent", "team_admin", "broker"])
                 else:
-                    n_brokerage = st.session_state.brokerage
-                    n_team = st.session_state.team if st.session_state.role == "team_admin" else st.text_input("Team Name", value="Independent")
+                    n_brok, n_team = st.session_state.brokerage, (st.session_state.team if st.session_state.role == "team_admin" else st.text_input("Team Name", "Independent"))
                     n_role = st.selectbox("Role", ["agent", "team_admin"]) if st.session_state.role == "broker" else "agent"
-                
-                f1, f2, f3 = st.columns([1, 2, 1])
-                with f2:
-                    if st.form_submit_button("Provision Account", use_container_width=True):
-                        if db.add_user(n_user, n_pwd, n_role, n_brokerage, n_team, n_name):
-                            st.success(f"Account created.")
-                        else: st.error("Username already exists.")
-                    
+                if st.form_submit_button("Provision Account"):
+                    if db.add_user(n_user, n_pwd, n_role, n_brok, n_team, n_name): st.success("Created.")
+                    else: st.error("Username exists.")
         with c2:
-            st.markdown("### Active Scope Users")
-            scoped_users = db.get_scoped_users(st.session_state.role, st.session_state.brokerage, st.session_state.team)
-            st.dataframe(scoped_users, hide_index=True, use_container_width=True)
+            st.markdown("### Scope Users")
+            st.dataframe(db.get_scoped_users(st.session_state.role, st.session_state.brokerage, st.session_state.team), hide_index=True)
 
     with t2:
-        st.markdown("### Organizational Intelligence Portfolios")
-        scoped_clients = db.get_scoped_clients(st.session_state.role, st.session_state.username, st.session_state.brokerage, st.session_state.team)
-        if not scoped_clients: st.info("No client data generated in your scope yet.")
+        st.markdown("### Portfolios")
+        clients = db.get_scoped_clients(st.session_state.role, st.session_state.username, st.session_state.brokerage, st.session_state.team)
+        if not clients: st.info("No data.")
         else:
-            col_a, col_b, col_c = st.columns(3)
-            cols = [col_a, col_b, col_c]
-            for idx, c in enumerate(scoped_clients):
-                cdata = c['data']
+            cols = st.columns(3)
+            for idx, c in enumerate(clients):
                 with cols[idx % 3]:
-                    st.markdown(f"<div class='client-card'><h3>{cdata['name']}</h3><p>AGENT: {c['agent']}<br>{cdata['market']} | {cdata['type']}</p></div>", unsafe_allow_html=True)
-                    if st.button(f"Enter Dashboard ➔", key=f"dash_{c['client_id']}", use_container_width=True):
+                    st.markdown(f"<div class='client-card'><h3>{c['data']['name']}</h3><p>AGENT: {c['agent']}<br>{c['data']['market']} | {c['data']['type']}</p></div>", unsafe_allow_html=True)
+                    if st.button("Enter Dashboard ➔", key=f"dash_{c['client_id']}", use_container_width=True):
                         st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox"}); st.rerun()
 
     with t3:
         sc1, sc2 = st.columns(2)
         with sc1:
-            st.markdown("### Dynamic UI Theming (AI)")
-            theme_prompt = st.chat_input("Ask AI to change colors/fonts (e.g. 'Ocean blue and modern')")
-            if theme_prompt:
-                with st.spinner("AI is rebuilding CSS..."):
-                    if process_ai_theme(theme_prompt): st.rerun()
-                    else: st.error("AI Theming failed. Try a simpler prompt.")
+            st.markdown("### Dynamic UI (AI)")
+            if prompt := st.chat_input("Make it ocean blue..."):
+                with st.spinner("Rebuilding CSS..."):
+                    res = run_ai(f"Respond ONLY with valid JSON (keys: primary, accent, bg, text, font_header, font_body) matching: {prompt}", "")
+                    try: st.session_state.theme.update(json.loads(res.replace('```json', '').replace('```', '').strip())); st.rerun()
+                    except: st.error("Theming failed.")
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Revert to Praxis Luxury Standard", use_container_width=True):
-                st.session_state.theme = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text": "#1A1A1A", "font_header": "Playfair Display", "font_body": "Montserrat"}
-                st.rerun()
+            if st.button("Revert Default Theme", use_container_width=True): st.session_state.theme = THEME_LIGHT; st.rerun()
         with sc2:
-            st.markdown("### System Telemetry & Health")
-            if st.button("Generate System Briefing", use_container_width=True):
-                with st.spinner("Analyzing DB Telemetry..."):
-                    stats = generate_system_stats()
-                    st.info(stats)
+            st.markdown("### Telemetry")
+            if st.button("Generate Briefing", use_container_width=True):
+                with st.spinner("Analyzing DB..."):
+                    df_u, df_c = db.get_telemetry()
+                    st.info(run_ai(f"Write a 2-paragraph SaaS admin briefing. Users: {len(df_u)}, Logins: {df_u['login_count'].sum() if not df_u.empty else 0}. Briefs: {len(df_c)}.", "Analytics offline."))
 
-# ====================================================================
-# VIEW 2: AGENT HUB (ROSTER)
-# ====================================================================
 elif st.session_state.role == "agent" and st.session_state.view_mode == "hub":
     st.markdown("<div style='height: 5vh;'></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
-    st.markdown(f"<h1>Client Hub</h1>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.markdown("<h1>Client Hub</h1>", unsafe_allow_html=True)
+    _, col2, _ = st.columns([1, 2, 1])
     with col2:
-        c_left, c_right = st.columns(2)
-        with c_left:
-            if st.button("New Client", use_container_width=True):
-                st.session_state.update({"temp_client": {}, "wizard_step": 1, "view_mode": "wizard"}); st.rerun()
-        with c_right:
+        c1, c2 = st.columns(2)
+        with c1: 
+            if st.button("New Client", use_container_width=True): st.session_state.update({"temp_client": {}, "wizard_step": 1, "view_mode": "wizard"}); st.rerun()
+        with c2: 
             if st.button("Log Out", use_container_width=True): logout()
-        
-        st.divider()
-        st.markdown("<h3 style='text-align: center;'>ACTIVE PORTFOLIOS</h3>", unsafe_allow_html=True)
-        
-        agent_clients = db.get_scoped_clients("agent", st.session_state.username, None, None)
-        if not agent_clients: st.info("No active clients. Initialize a new strategy to begin.")
+        st.divider(); st.markdown("<h3 style='text-align: center;'>ACTIVE PORTFOLIOS</h3>", unsafe_allow_html=True)
+        clients = db.get_scoped_clients("agent", st.session_state.username, None, None)
+        if not clients: st.info("No active clients.")
         else:
-            for c in agent_clients:
-                cdata = c['data']
-                st.markdown(f"<div class='client-card'><h3>{cdata['name']}</h3><p>{cdata['market']} | {cdata['type']}</p></div>", unsafe_allow_html=True)
-                if st.button(f"Load {cdata['name']} ➔", key=f"load_{c['client_id']}", use_container_width=True):
+            for c in clients:
+                st.markdown(f"<div class='client-card'><h3>{c['data']['name']}</h3><p>{c['data']['market']} | {c['data']['type']}</p></div>", unsafe_allow_html=True)
+                if st.button(f"Load {c['data']['name']} ➔", key=f"ld_{c['client_id']}", use_container_width=True):
                     st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox"}); st.rerun()
 
-# ====================================================================
-# VIEW 3: DISAPPEARING WIZARD
-# ====================================================================
 elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard":
     st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</div>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
+    _, col2, _ = st.columns([1, 2, 1])
     with col2:
         if st.session_state.wizard_step == 1:
             st.markdown("<h1>Client Name</h1>", unsafe_allow_html=True)
-            with st.form("step1_form"):
-                client_input = st.text_input("Client Name", placeholder="e.g., John Doe", label_visibility="collapsed")
-                c_sub1, c_sub2, c_sub3 = st.columns([1, 2, 1])
-                with c_sub2:
-                    if st.form_submit_button("Next", use_container_width=True) and client_input.strip():
-                        st.session_state.temp_client['name'] = client_input.title().strip()
-                        st.session_state.wizard_step = 2; st.rerun()
-
+            with st.form("w1"):
+                val = st.text_input("Name", label_visibility="collapsed")
+                if st.form_submit_button("Next") and val.strip():
+                    st.session_state.temp_client['name'] = val.title().strip()
+                    st.session_state.wizard_step = 2; st.rerun()
         elif st.session_state.wizard_step == 2:
-            st.markdown(f"<h1>Market Area</h1>", unsafe_allow_html=True)
-            with st.form("step2_form"):
-                market_input = st.text_input("Market Area", placeholder="e.g., Lindale", label_visibility="collapsed")
-                c_sub1, c_sub2, c_sub3 = st.columns([1, 2, 1])
-                with c_sub2:
-                    if st.form_submit_button("Next", use_container_width=True):
-                        market_clean = engine.validate_market(market_input)
-                        if market_clean:
-                            st.session_state.temp_client['market'] = market_clean
-                            st.session_state.wizard_step = 3; st.rerun()
-                        else: st.error("⚠️ Data Feed Error: No active coverage for that area.")
-
+            st.markdown("<h1>Market Area</h1>", unsafe_allow_html=True)
+            with st.form("w2"):
+                val = st.text_input("Market", label_visibility="collapsed")
+                if st.form_submit_button("Next"):
+                    cln = engine.validate_market(val)
+                    if cln: st.session_state.temp_client['market'] = cln; st.session_state.wizard_step = 3; st.rerun()
+                    else: st.error("⚠️ Data Feed Error: No coverage.")
         elif st.session_state.wizard_step == 3:
             st.markdown("<h1>Price Point</h1>", unsafe_allow_html=True)
-            with st.form("step3_form"):
-                default_price = engine.get_market_metrics(st.session_state.temp_client['market'])['price']
-                price_input = st.text_input("Price Point ($)", value=f"${default_price:,}", label_visibility="collapsed")
-                c_sub1, c_sub2, c_sub3 = st.columns([1, 2, 1])
-                with c_sub2:
-                    if st.form_submit_button("Next", use_container_width=True):
-                        clean_str = re.sub(r'[^\d.]', '', price_input)
-                        if clean_str:
-                            st.session_state.temp_client['price'] = int(float(clean_str))
-                            st.session_state.wizard_step = 4; st.rerun()
-
+            with st.form("w3"):
+                val = st.text_input("Price", value=f"${engine.get_market_metrics(st.session_state.temp_client['market'])['price']:,}", label_visibility="collapsed")
+                if st.form_submit_button("Next"):
+                    cln = re.sub(r'[^\d.]', '', val)
+                    if cln: st.session_state.temp_client['price'] = int(float(cln)); st.session_state.wizard_step = 4; st.rerun()
         elif st.session_state.wizard_step == 4:
             st.markdown("<h1>Specific Target Property?</h1>", unsafe_allow_html=True)
-            with st.form("step4_form"):
-                addr_input = st.text_input("Property Address", placeholder="e.g., 123 Main St (Optional)", label_visibility="collapsed")
-                c_sub1, c_sub2, c_sub3 = st.columns([1, 2, 1])
-                with c_sub2:
-                    if st.form_submit_button("Next / Skip", use_container_width=True):
-                        st.session_state.temp_client['address'] = addr_input.strip()
-                        st.session_state.wizard_step = 5; st.rerun()
-
+            with st.form("w4"):
+                val = st.text_input("Addr", placeholder="(Optional)", label_visibility="collapsed")
+                if st.form_submit_button("Next / Skip"): st.session_state.temp_client['address'] = val.strip(); st.session_state.wizard_step = 5; st.rerun()
         elif st.session_state.wizard_step == 5:
             st.markdown("<h1>Strategic Focus</h1>", unsafe_allow_html=True)
-            
-            c_space1, c_main, c_space2 = st.columns([1, 3, 1])
-            with c_main:
-                if st.button("Buyer Advisory", use_container_width=True): st.session_state.temp_client['type'] = "Buyer Advisory Brief"; st.session_state.wizard_step = 6; st.rerun()
-                if st.button("Seller Strategy", use_container_width=True): st.session_state.temp_client['type'] = "Seller Disposition Strategy"; st.session_state.wizard_step = 6; st.rerun()
-                if st.button("Investor Memo", use_container_width=True): st.session_state.temp_client['type'] = "Investor Acquisition Memo"; st.session_state.wizard_step = 6; st.rerun()
+            c1, c2, c3 = st.columns(3)
+            for col, lbl, typ in zip([c1, c2, c3], ["Buyer Advisory", "Seller Strategy", "Investor Memo"], ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"]):
+                with col:
+                    if st.button(lbl, use_container_width=True): 
+                        st.session_state.temp_client.update({'type': typ, 'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': ""})
+                        cid = str(uuid.uuid4()); db.save_client(cid, st.session_state.username, st.session_state.brokerage, st.session_state.team, st.session_state.temp_client)
+                        st.session_state.update({"active_client_id": cid, "view_mode": "sandbox"}); st.rerun()
 
-        elif st.session_state.wizard_step == 6:
-            st.session_state.temp_client.update({'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': ""})
-            cid = str(uuid.uuid4())
-            db.save_client(cid, st.session_state.username, st.session_state.brokerage, st.session_state.team, st.session_state.temp_client)
-            st.session_state.active_client_id = cid
-            st.session_state.view_mode = "sandbox"
-            st.rerun()
-
-# ====================================================================
-# VIEW 4: THE AGENT SANDBOX
-# ====================================================================
 elif st.session_state.view_mode == "sandbox":
-    
     cid = st.session_state.active_client_id
-    client_data = db.get_client_by_id(cid)
-    owner_agent = client_data.get('agent_owner', st.session_state.username)
-    market_info = engine.get_market_metrics(client_data['market'])
+    cd = db.get_client_by_id(cid)
+    own = cd.get('agent_owner', st.session_state.username)
+    mi = engine.get_market_metrics(cd['market'])
     
     with st.sidebar:
         st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important;'>PRAXIS</h2>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center; color: {st.session_state.theme['accent']} !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>SANDBOX</div>", unsafe_allow_html=True)
-        
-        if st.button("⬅ Return to Hub", use_container_width=True):
-            st.session_state.view_mode = "admin" if st.session_state.role in ["sysadmin", "broker", "team_admin"] else "hub"
-            st.rerun()
-            
+        if st.button("⬅ Hub", use_container_width=True): st.session_state.view_mode = "admin" if st.session_state.role != "agent" else "hub"; st.rerun()
         st.divider()
-        st.markdown("### Interface Mode")
-        theme_toggle = st.radio("Display", ["Light Mode", "Dark Mode"], index=0 if st.session_state.theme['bg'] == '#FBFBF9' else 1, label_visibility="collapsed")
-        if theme_toggle == "Dark Mode" and st.session_state.theme['bg'] != '#121212':
-            st.session_state.theme = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "text": "#EAEAEA", "font_header": "Playfair Display", "font_body": "Montserrat"}
-            st.rerun()
-        elif theme_toggle == "Light Mode" and st.session_state.theme['bg'] != '#FBFBF9':
-            st.session_state.theme = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text": "#1A1A1A", "font_header": "Playfair Display", "font_body": "Montserrat"}
-            st.rerun()
+        if st.radio("UI", ["Light", "Dark"], index=0 if st.session_state.theme['bg'] == '#FBFBF9' else 1, horizontal=True) == "Dark" and st.session_state.theme['bg'] != '#121212':
+            st.session_state.theme = THEME_DARK; st.rerun()
+        elif st.session_state.theme['bg'] != '#FBFBF9' and st.session_state.theme['bg'] != '#121212': pass
+        elif st.session_state.theme['bg'] == '#121212': st.session_state.theme = THEME_LIGHT; st.rerun()
             
-        st.divider()
-        st.markdown("### Overrides")
-        new_type = st.selectbox("Strategy Mode", ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"], index=["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"].index(client_data['type']))
-        new_price = st.number_input("Price ($)", value=client_data['price'], step=10000)
-        new_rate = st.number_input("Rate (%)", value=client_data['base_rate'], step=0.125)
-        new_tax = st.number_input("Tax Rate (%)", value=client_data.get('tax_rate_override', 2.2), step=0.1)
-        new_hoa = st.number_input("HOA ($/mo)", value=client_data.get('hoa_override', 0), step=10)
+        st.divider(); st.markdown("### Overrides")
+        nt = st.selectbox("Mode", ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"], index=["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"].index(cd['type']))
+        np = st.number_input("Price ($)", value=cd['price'], step=10000)
+        nr = st.number_input("Rate (%)", value=cd['base_rate'], step=0.125)
+        nx = st.number_input("Tax Rate (%)", value=cd.get('tax_rate_override', 2.2), step=0.1)
+        nh = st.number_input("HOA ($/mo)", value=cd.get('hoa_override', 0), step=10)
         
-        if (new_type != client_data['type'] or new_price != client_data['price'] or new_rate != client_data['base_rate'] or new_tax != client_data.get('tax_rate_override') or new_hoa != client_data.get('hoa_override')):
-            client_data.update({'type': new_type, 'price': new_price, 'base_rate': new_rate, 'tax_rate_override': new_tax, 'hoa_override': new_hoa})
-            db.save_client(cid, owner_agent, st.session_state.brokerage, st.session_state.team, client_data)
-            st.rerun()
+        if any([nt!=cd['type'], np!=cd['price'], nr!=cd['base_rate'], nx!=cd.get('tax_rate_override'), nh!=cd.get('hoa_override')]):
+            cd.update({'type': nt, 'price': np, 'base_rate': nr, 'tax_rate_override': nx, 'hoa_override': nh})
+            db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
 
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
-    header_title = client_data['address'] if client_data['address'] else f"{client_data['market']} Market Intelligence"
-    st.markdown(f"<h1>{header_title.title()}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{client_data['name']}</strong> | Strategy: <strong>{client_data['type']}</strong></p>", unsafe_allow_html=True)
-    st.write("") 
-
+    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()}</div>", unsafe_allow_html=True)
+    st.markdown(f"<h1>{(cd['address'] if cd['address'] else cd['market']).title()}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{cd['name']}</strong> | Strategy: <strong>{cd['type']}</strong></p>", unsafe_allow_html=True)
+    
     b1, b2, b3, b4 = st.columns(4)
-    b1.metric("Target Asset Value", f"${client_data['price']:,}")
-    b2.metric("Assigned Tax Rate", f"{client_data.get('tax_rate_override', 2.2):.2f}%")
-    b3.metric("Monthly HOA", f"${client_data.get('hoa_override', 0):,.0f}")
-    b4.metric("Market Velocity", f"{market_info['dom']} Days")
+    b1.metric("Asset Value", f"${cd['price']:,}"); b2.metric("Tax Rate", f"{cd.get('tax_rate_override', 2.2):.2f}%")
+    b3.metric("Monthly HOA", f"${cd.get('hoa_override', 0):,.0f}"); b4.metric("Velocity", f"{mi['dom']} Days")
     st.divider()
 
-    def calc_mortgage(price, rate, dp_pct):
-        loan = price * (1 - (dp_pct / 100))
-        return loan * ((rate / 100) / 12 * (1 + (rate / 100) / 12)**360) / ((1 + (rate / 100) / 12)**360 - 1) if loan > 0 else 0
+    f_scr = min(round((calc_mortgage(cd['price'], cd['base_rate'], 20) * 12 / mi['income']) * 20, 1), 10.0)
 
-    base_pmt = calc_mortgage(client_data['price'], client_data['base_rate'], 20)
-    friction_score = min(round((base_pmt * 12 / market_info['income']) * 20, 1), 10.0)
-
-    tab1, tab2, tab3 = st.tabs(["AI Strategy Brief & Export", "Deal Stack Optimizer", "Risk Matrix"])
-
-    with tab1:
-        c_left, c_right = st.columns([1, 1.5])
-        with c_left:
-            fig_gauge = go.Figure(go.Indicator(
-                mode = "gauge+number", value = friction_score, domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Affordability Friction", 'font': {'size': 14, 'color': st.session_state.theme['accent'], 'family': st.session_state.theme['font_body']}},
-                gauge = {'axis': {'range': [None, 10], 'tickwidth': 1, 'tickcolor': "darkblue"}, 'bar': {'color': st.session_state.theme['primary']}, 'bgcolor': "transparent", 'borderwidth': 2, 'bordercolor': "#EAEAEA", 'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}]}
-            ))
-            fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
-
-        with c_right:
-            if st.button("Generate/Refresh Executive Brief", use_container_width=True):
-                with st.spinner("Authoring Advisory Brief..."):
-                    brief = generate_strategy_memo(st.session_state.display_name, client_data['name'], client_data['type'], client_data['market'], client_data['address'], client_data['price'], client_data['base_rate'], friction_score)
-                    client_data['saved_brief'] = brief
-                    db.save_client(cid, owner_agent, st.session_state.brokerage, st.session_state.team, client_data)
-                    st.rerun()
-            if client_data.get('saved_brief'):
-                st.markdown(f"<div style='background-color:transparent; padding: 1rem 0; border-top: 2px solid {st.session_state.theme['primary']}; margin-top: 1rem;'>{client_data['saved_brief']}</div>", unsafe_allow_html=True)
-                pdf_bytes = generate_pdf(client_data['name'], client_data['market'], client_data['address'], client_data['saved_brief'])
-                st.download_button(label="Download Report as PDF", data=pdf_bytes, file_name=f"Praxis_{client_data['name'].replace(' ','_')}.pdf", mime="application/pdf")
-
-    with tab2:
-        st.markdown("<h2 style='text-align: left;'>Deal Stack Optimizer</h2>", unsafe_allow_html=True)
+    t1, t2, t3 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix"])
+    with t1:
+        c1, c2 = st.columns([1, 1.5])
+        with c1:
+            fig = go.Figure(go.Indicator(mode="gauge+number", value=f_scr, title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, gauge={'axis': {'range': [None, 10]}, 'bar': {'color': st.session_state.theme['primary']}, 'bgcolor': "transparent", 'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}]}))
+            fig.update_layout(height=250, paper_bgcolor='rgba(0,0,0,0)'); st.plotly_chart(fig, use_container_width=True)
+        with c2:
+            if st.button("Generate Executive Brief", use_container_width=True):
+                with st.spinner("Authoring..."):
+                    cd['saved_brief'] = run_ai(f"Act as {st.session_state.display_name}, luxury Realtor. Client: {cd['name']}. Type: {cd['type']}. Target: {cd['address'] or cd['market']}. Price: ${cd['price']}. Rate: {cd['base_rate']}%. Friction: {f_scr}/10. Tone: Polished. No emojis. Sections: MACRO DYNAMICS, MARKET HEALTH, STRATEGIC PLAYBOOK.")
+                    db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
+            if cd.get('saved_brief'):
+                st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
+                st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf")
+    with t2:
         col_dp, col_conc = st.columns(2)
-        with col_dp: dp_pct = st.slider("Down Payment Allocation (%)", 0, 100, 20, step=5)
-        with col_conc: concession = st.selectbox("Negotiated Concession", ["None (Standard Term)", "2-1 Rate Buydown (Year 1)", "1% Permanent Buydown", "3% Price Reduction"])
+        with col_dp: dp = st.slider("Down Payment (%)", 0, 100, 20, step=5)
+        with col_conc: conc = st.selectbox("Concession", ["None", "2-1 Rate Buydown", "1% Permanent Buydown", "3% Price Reduction"])
+        ep = cd['price'] * 0.97 if "Price" in conc else cd['price']
+        er = cd['base_rate'] - 2.0 if "2-1" in conc else cd['base_rate'] - 1.0 if "1%" in conc else cd['base_rate']
         
-        eff_price = client_data['price'] * 0.97 if concession == "3% Price Reduction" else client_data['price']
-        eff_rate = client_data['base_rate'] - 2.0 if concession == "2-1 Rate Buydown (Year 1)" else client_data['base_rate'] - 1.0 if concession == "1% Permanent Buydown" else client_data['base_rate']
-        eff_rate = max(eff_rate, 1.0)
+        bp, np = calc_mortgage(cd['price'], cd['base_rate'], dp), calc_mortgage(ep, max(er, 1.0), dp)
+        tm, im, hm = (cd['price'] * (cd.get('tax_rate_override', 2.2)/100))/12, (cd['price']*0.005)/12, cd.get('hoa_override', 0)
         
-        base_pi = calc_mortgage(client_data['price'], client_data['base_rate'], dp_pct)
-        new_pi = calc_mortgage(eff_price, eff_rate, dp_pct)
-        tax_mo = (client_data['price'] * (client_data.get('tax_rate_override', 2.2)/100)) / 12
-        ins_mo = (client_data['price'] * 0.005) / 12
-        hoa_mo = client_data.get('hoa_override', 0)
-        
-        fig_bar = go.Figure(data=[
-            go.Bar(name='Principal & Interest', x=['Standard Term', 'Optimized Strategy'], y=[base_pi, new_pi], marker_color=st.session_state.theme['primary']),
-            go.Bar(name='Taxes & Insurance', x=['Standard Term', 'Optimized Strategy'], y=[tax_mo + ins_mo, tax_mo + ins_mo], marker_color=st.session_state.theme['accent']),
-            go.Bar(name='HOA', x=['Standard Term', 'Optimized Strategy'], y=[hoa_mo, hoa_mo], marker_color='#E5E5E5')
+        f2 = go.Figure(data=[
+            go.Bar(name='P&I', x=['Standard', 'Optimized'], y=[bp, np], marker_color=st.session_state.theme['primary']),
+            go.Bar(name='Tax/Ins', x=['Standard', 'Optimized'], y=[tm+im, tm+im], marker_color=st.session_state.theme['accent']),
+            go.Bar(name='HOA', x=['Standard', 'Optimized'], y=[hm, hm], marker_color='#E5E5E5')
         ])
-        fig_bar.update_layout(barmode='stack', height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family=st.session_state.theme['font_body'], color=st.session_state.theme['text']), margin=dict(l=0, r=0, t=30, b=0))
-        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
-        
-        base_total = base_pi + tax_mo + ins_mo + hoa_mo
-        new_total = new_pi + tax_mo + ins_mo + hoa_mo
-        
+        f2.update_layout(barmode='stack', height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': st.session_state.theme['text']})
+        st.plotly_chart(f2, use_container_width=True)
         s1, s2, s3 = st.columns(3)
-        s1.metric("Optimized Total Monthly", f"${new_total:,.2f}", f"-${base_total - new_total:,.2f} / mo", delta_color="inverse")
-        s2.metric("Effective Cost of Capital", f"{eff_rate:.3f}%")
-        s3.metric("Cash to Close (Est.)", f"${(eff_price * (dp_pct/100)) + (eff_price * 0.03):,.0f}")
-
-    with tab3:
-        st.markdown("<h2 style='text-align: left;'>Market Capital Matrix</h2>", unsafe_allow_html=True)
+        s1.metric("Optimized Monthly", f"${np+tm+im+hm:,.2f}", f"-${(bp+tm+im+hm) - (np+tm+im+hm):,.2f}", "inverse")
+        s2.metric("Effective Rate", f"{max(er, 1.0):.3f}%"); s3.metric("Cash to Close", f"${(ep*(dp/100))+(ep*0.03):,.0f}")
+    with t3:
         r1, r2, r3 = st.columns(3)
-        r1.metric("Absorption Rate", f"{round((market_info['inventory'] / (market_info['inventory']/3)), 1)} Months")
-        r2.metric("Contract Fall-Through", "14.2%", "Systemic Risk Factor", delta_color="inverse")
-        r3.metric("List-to-Sale Delta", "-2.4%")
+        r1.metric("Absorption Rate", f"{round((mi['inventory'] / (mi['inventory']/3)), 1)} Months")
+        r2.metric("Fall-Through", "14.2%", "Risk Factor", "inverse")
+        r3.metric("List-to-Sale", "-2.4%")
