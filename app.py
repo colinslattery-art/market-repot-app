@@ -5,101 +5,58 @@ from datetime import datetime
 from google import genai
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(
-    page_title="The Praxis Report - Market Intelligence Sandbox",
-    page_icon="📈",
-    layout="wide"
-)
+st.set_page_config(page_title="The Praxis Report - Market Intelligence Sandbox", page_icon="📈", layout="wide")
 
 # --- INJECT THEME-ADAPTIVE CSS ---
 st.markdown("""
     <style>
-        html, body, [class*="css"] {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        }
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
-        
+        html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+        #MainMenu, footer, header {visibility: hidden;}
         div[data-testid="metric-container"] {
             background-color: var(--secondary-background-color) !important;
             border: 1px solid rgba(128, 128, 128, 0.2) !important;
-            border-radius: 8px;
-            padding: 1rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border-radius: 8px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        div[data-testid="stMetricValue"] {
-            font-size: 1.8rem !important;
-            font-weight: 600 !important;
-            color: var(--text-color) !important;
-        }
-        div[data-testid="stMetricLabel"] {
-            font-size: 0.85rem !important;
-            font-weight: 500 !important;
-            color: var(--text-color) !important;
-            opacity: 0.7;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+        div[data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 600 !important; color: var(--text-color) !important; }
+        div[data-testid="stMetricLabel"] { font-size: 0.85rem !important; font-weight: 500 !important; color: var(--text-color) !important; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
         .stTabs [data-baseweb="tab-list"] { gap: 1.5rem; }
-        .stTabs [data-baseweb="tab"] {
-            height: 3rem;
-            background-color: transparent;
-            border-bottom: 2px solid transparent;
-            color: var(--text-color);
-            opacity: 0.6;
-            font-weight: 500;
-        }
-        .stTabs [aria-selected="true"] {
-            border-bottom: 2px solid var(--text-color) !important;
-            color: var(--text-color) !important;
-            opacity: 1.0;
-            font-weight: 600;
-        }
+        .stTabs [data-baseweb="tab"] { height: 3rem; background-color: transparent; border-bottom: 2px solid transparent; color: var(--text-color); opacity: 0.6; font-weight: 500; }
+        .stTabs [aria-selected="true"] { border-bottom: 2px solid var(--text-color) !important; color: var(--text-color) !important; opacity: 1.0; font-weight: 600; }
         h1, h2, h3, p, span, label { color: var(--text-color) !important; }
-        .stButton>button {
-            background-color: var(--text-color) !important;
-            color: var(--background-color) !important;
-            border: none !important;
-            border-radius: 4px !important;
-            padding: 0.6rem 2rem !important;
-            font-weight: 600 !important;
-        }
+        .stButton>button { background-color: var(--text-color) !important; color: var(--background-color) !important; border: none !important; border-radius: 4px !important; padding: 0.6rem 2rem !important; font-weight: 600 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- API KEYS & CLIENT ---
+# --- API KEYS ---
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 FRED_API_KEY = st.secrets.get("FRED_API_KEY", "")
-
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 @st.cache_data(ttl=86400)
 def get_live_rate():
-    if not FRED_API_KEY:
-        return 6.8
+    if not FRED_API_KEY: return 6.8
     try:
         url = f"https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key={FRED_API_KEY}&file_type=json&sort_order=desc&limit=1"
-        response = requests.get(url, timeout=1).json()
-        return float(response['observations'][0]['value'])
-    except Exception:
-        return 6.8
+        return float(requests.get(url, timeout=1).json()['observations'][0]['value'])
+    except: return 6.8
 
 live_rate = get_live_rate()
 
-# --- SIDEBAR BRANDING & CLIENT INPUTS ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 📋 Client & Report Settings")
+    st.markdown("### 📋 Client Settings")
     agent_name = st.text_input("Agent Name", value="Colin Slattery")
     client_name = st.text_input("Client Name", placeholder="e.g., John & Jane Doe")
-    property_address = st.text_input("Target Property Address", placeholder="e.g., 123 Main St, Frisco TX")
+    property_address = st.text_input("Target Property Address")
     report_type = st.selectbox("Report Persona Focus", ["Buyer Advisory Brief", "Seller Listing Strategy", "Investor Acquisition Memo"])
+    
     st.divider()
-    st.caption("The Praxis Report v2.5 | Hyper-Local Intelligence")
+    st.markdown("### 🏦 Investor Assumptions")
+    proj_rent = st.number_input("Projected Monthly Rent ($)", value=3200, step=100)
+    down_pmt_pct = st.slider("Down Payment %", 5, 100, 20, step=5)
 
-# --- DATA DICTIONARY (SUB-MARKETS VS DFW BASELINE) ---
+# --- DATA DICTIONARY ---
 dfw_baseline = {"price": 407000, "dom": 49, "inventory": 146000, "income": 84000}
-
 local_market_data = {
     "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
     "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
@@ -120,164 +77,107 @@ local_market_data = {
     "Longview": {"income": 56000, "price": 275000, "dom": 58, "inventory": 310},
 }
 
-# --- HEADER SECTION ---
+# --- HEADER ---
 st.title("The Praxis Report")
-st.markdown("<p style='font-size: 1.05rem; opacity: 0.8; margin-bottom: 1.5rem;'>Hyper-Local Market Analytics & AI Strategic Advisory</p>", unsafe_allow_html=True)
-
 col_m, col_r = st.columns([2, 1])
-with col_m:
-    sub_market = st.selectbox("Target Sub-Market Area", sorted(list(local_market_data.keys())), index=sorted(list(local_market_data.keys())).index("Frisco"))
-with col_r:
-    st.metric("30-Yr Mortgage Rate", f"{live_rate}%")
+with col_m: sub_market = st.selectbox("Target Sub-Market Area", sorted(list(local_market_data.keys())), index=sorted(list(local_market_data.keys())).index("Frisco"))
+with col_r: st.metric("30-Yr Mortgage Rate", f"{live_rate}%")
 
 market_info = local_market_data[sub_market]
-median_income = market_info["income"]
-latest_median_price = market_info["price"]
-latest_dom = market_info["dom"]
-active_inventory = market_info["inventory"]
+median_income, latest_median_price, latest_dom, active_inventory = market_info["income"], market_info["price"], market_info["dom"], market_info["inventory"]
 
-# --- BENCHMARK CARDS WITH COMPARATIVE DELTAS ---
 b1, b2, b3, b4 = st.columns(4)
-b1.metric("Median Price", f"${latest_median_price:,}", delta=f"{((latest_median_price - dfw_baseline['price']) / dfw_baseline['price']) * 100:+.1f}% vs DFW")
-b2.metric("Days on Market", f"{latest_dom} Days", delta=f"{latest_dom - dfw_baseline['dom']:+d} Days vs DFW")
-b3.metric("Active Inventory", f"{active_inventory:,}", delta="Local Pool")
-b4.metric("Est. Household Income", f"${median_income:,}", delta=f"{((median_income - dfw_baseline['income']) / dfw_baseline['income']) * 100:+.1f}% vs DFW")
-
+b1.metric("Median Price", f"${latest_median_price:,}", f"{((latest_median_price - dfw_baseline['price']) / dfw_baseline['price']) * 100:+.1f}% vs DFW")
+b2.metric("Days on Market", f"{latest_dom} Days", f"{latest_dom - dfw_baseline['dom']:+d} Days vs DFW")
+b3.metric("Active Inventory", f"{active_inventory:,}", "Local Pool")
+b4.metric("Est. Household Income", f"${median_income:,}", f"{((median_income - dfw_baseline['income']) / dfw_baseline['income']) * 100:+.1f}% vs DFW")
 st.divider()
 
 # --- ANALYTICS TABS ---
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🎯 Friction Model & AI Advisory", 
-    "🧮 Concession & Rate Buydown Simulator", 
-    "💰 Capital & Financing Composition", 
-    "⚠️ Velocity & Risk Signals"
-])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎯 Friction & AI Advisory", "🏢 Investor ROI & Yield", "🧮 Concession Simulator", "💰 Capital Structure", "⚠️ Velocity Signals"])
 
-# CALCULATOR HELPER FUNCTION
-def calc_monthly_pmt(price, rate):
+def calc_monthly_pmt(price, rate, dp_pct=0):
+    loan_amt = price * (1 - (dp_pct / 100))
+    if loan_amt <= 0: return 0
     r = (rate / 100) / 12
     n = 360
-    return price * (r * (1 + r)**n) / ((1 + r)**n - 1)
+    return loan_amt * (r * (1 + r)**n) / ((1 + r)**n - 1)
 
 def calc_friction(price, rate, income):
     pmt = calc_monthly_pmt(price, rate)
     return min(round((pmt * 12 / income) * 20, 1), 10.0), round(pmt, 2)
 
-# TAB 1: FRICTION MODEL & AI ADVISORY
 with tab1:
-    st.markdown("### Affordability Friction Model")
     c_left, c_right = st.columns(2)
     with c_left:
         target_price = st.slider("Target Purchase Price ($)", 100000, 2500000, latest_median_price, step=5000)
         interest_rate = st.slider("Base Mortgage Rate (%)", 3.0, 10.0, live_rate, step=0.1)
-
     with c_right:
         friction_score, base_pmt = calc_friction(target_price, interest_rate, median_income)
         st.metric("Affordability Friction Score", f"{friction_score} / 10")
         st.markdown(f"**Monthly Principal & Interest:** `${base_pmt:,.2f}` / mo")
-        st.caption(f"Based on {sub_market} median income (${median_income:,})")
-
+    
     st.divider()
-    
-    st.markdown(f"### 🤖 Praxis AI Advisory Brief ({report_type})")
     if st.button("Generate Executive Report", type="primary"):
-        if not client:
-            st.error("Please add your `GEMINI_API_KEY` to `.streamlit/secrets.toml`.")
+        if not client: st.error("Add GEMINI_API_KEY to secrets.")
         else:
-            prompt = f"""
-            Act as an elite real estate strategist producing 'The Praxis Report'.
-            
-            Report Parameters:
-            - Focus Mode: {report_type}
-            - Agent Name: {agent_name}
-            - Prepared for Client: {client_name if client_name else 'Valued Client'}
-            - Subject Property/Area: {property_address if property_address else sub_market}
-            - Sub-Market: {sub_market}
-            - Baseline Price: ${latest_median_price:,} | Client Target Price: ${target_price:,}
-            - Interest Rate: {interest_rate}% | Local Household Income: ${median_income:,}
-            - Affordability Friction Index: {friction_score}/10
-            - Days on Market: {latest_dom} days
-            
-            Format your response strictly into 3 numbered sections:
-            
-            1. **Applied Market Dynamics:** Analyze buyer velocity, purchasing power, and price sensitivity in {sub_market} given the {friction_score}/10 friction score. Compare target price (${target_price:,}) against local baseline (${latest_median_price:,}).
-            
-            2. **Sub-Market Micro-Heatmap:** Provide a Markdown table evaluating 3 micro-pockets or neighborhood tiers in/around {sub_market} with columns: | Micro-Pocket | Leverage Index | Buyer Velocity | Market Phase |
-            
-            3. **Actionable Strategic Playbook:**
-            - **Seller Strategy:** 1 high-impact tactical advice regarding pricing, concessions, or staging.
-            - **Buyer Strategy:** 1 negotiation leverage point to maximize purchasing power or reduce friction.
-            """
-            
-            with st.spinner("Compiling strategic market report..."):
-                try:
-                    res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
-                    report_text = res.text
-                    
-                    # Header block for download
-                    header_block = f"# THE PRAXIS REPORT\n"
-                    header_block += f"**Prepared by:** {agent_name} | **Date:** {datetime.now().strftime('%B %d, %Y')}\n"
-                    if client_name: header_block += f"**Prepared for:** {client_name}\n"
-                    if property_address: header_block += f"**Target Property:** {property_address}\n"
-                    header_block += f"**Sub-Market:** {sub_market} | **Friction Score:** {friction_score}/10\n\n---\n\n"
-                    
-                    full_report = header_block + report_text
-                    
-                    st.markdown(full_report)
-                    st.download_button("💾 Download Report (.md)", data=full_report, file_name=f"Praxis_Report_{sub_market}_{datetime.now().strftime('%Y%m%d')}.md")
-                except Exception as e:
-                    st.error(f"Error generating AI advisory: {e}")
+            prompt = f"Act as an elite real estate strategist. Report Type: {report_type}. Sub-market: {sub_market}. Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10. DOM: {latest_dom}. Write 3 numbered sections: 1. Applied Market Dynamics, 2. Sub-Market Micro-Heatmap (Markdown Table), 3. Actionable Strategic Playbook (1 Seller strategy, 1 Buyer strategy)."
+            with st.spinner("Compiling strategic report..."):
+                res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
+                header = f"# THE PRAXIS REPORT\n**Prepared by:** {agent_name} | **Date:** {datetime.now().strftime('%b %d, %Y')}\n**Sub-Market:** {sub_market} | **Friction:** {friction_score}/10\n\n---\n\n"
+                full_report = header + res.text
+                st.markdown(full_report)
+                st.download_button("💾 Download Report (.md)", full_report, f"Praxis_{sub_market}.md")
 
-# TAB 2: RATE BUYDOWN & CONCESSION SIMULATOR
-with tab2:
-    st.markdown("### Seller Concession & Rate Buydown Simulator")
-    st.write("Model the impact of a 2-1 temporary rate buydown or permanent seller concession on monthly payment and friction.")
+with tab5:
+    st.markdown(f"### Investment Yield Analysis ({sub_market})")
+    st.write(f"Based on Target Price: **${target_price:,.2f}** with **{down_pmt_pct}% Down**.")
     
+    annual_rent = proj_rent * 12
+    taxes = target_price * 0.022  # Est 2.2% Texas Tax Rate
+    insurance = target_price * 0.005
+    maintenance = annual_rent * 0.08
+    noi = annual_rent - (taxes + insurance + maintenance)
+    cap_rate = (noi / target_price) * 100
+    
+    inv_pmt = calc_monthly_pmt(target_price, interest_rate, dp_pct=down_pmt_pct)
+    annual_debt = inv_pmt * 12
+    cash_flow = noi - annual_debt
+    cash_invested = (target_price * (down_pmt_pct / 100)) + (target_price * 0.03) # Down pmt + 3% closing
+    coc_return = (cash_flow / cash_invested) * 100 if cash_invested > 0 else 0
+
+    i1, i2, i3, i4 = st.columns(4)
+    i1.metric("Net Operating Income (NOI)", f"${noi:,.0f}")
+    i2.metric("Cap Rate", f"{cap_rate:.2f}%")
+    i3.metric("Annual Cash Flow", f"${cash_flow:,.0f}")
+    i4.metric("Cash-on-Cash Return", f"{coc_return:.2f}%")
+    
+    st.caption("Assumptions: 2.2% Property Tax, 0.5% Insurance, 8% Maintenance/Vacancy reserve, 3% Closing Costs.")
+
+with tab2:
+    st.markdown("### Concession Simulator")
     col_sim1, col_sim2 = st.columns(2)
     with col_sim1:
-        buydown_type = st.radio("Concession Scenario", ["2-1 Temporary Buydown (Year 1)", "1% Permanent Rate Buydown", "3% Seller Price Reduction"])
-        
-        if buydown_type == "2-1 Temporary Buydown (Year 1)":
-            effective_rate = max(interest_rate - 2.0, 1.0)
-            adjusted_price = target_price
-        elif buydown_type == "1% Permanent Rate Buydown":
-            effective_rate = max(interest_rate - 1.0, 1.0)
-            adjusted_price = target_price
-        else:
-            effective_rate = interest_rate
-            adjusted_price = target_price * 0.97
-
+        buydown_type = st.radio("Scenario", ["2-1 Temporary Buydown (Year 1)", "1% Permanent Rate Buydown", "3% Seller Price Reduction"])
+        effective_rate = max(interest_rate - 2.0, 1.0) if "2-1" in buydown_type else max(interest_rate - 1.0, 1.0) if "1%" in buydown_type else interest_rate
+        adjusted_price = target_price * 0.97 if "3%" in buydown_type else target_price
     with col_sim2:
-        new_friction, new_pmt = calc_friction(adjusted_price, effective_rate, median_income)
-        monthly_savings = base_pmt - new_pmt
-        annual_savings = monthly_savings * 12
-        
-        st.metric("New Monthly Payment", f"${new_pmt:,.2f}", delta=f"-${monthly_savings:,.2f} / mo", delta_color="inverse")
-        st.metric("Adjusted Friction Score", f"{new_friction} / 10", delta=f"{new_friction - friction_score:.1f} Points", delta_color="inverse")
-        st.success(f"💰 Total First-Year Cash Savings: **${annual_savings:,.2f}**")
+        new_frict, new_pmt = calc_friction(adjusted_price, effective_rate, median_income)
+        st.metric("New Monthly Payment", f"${new_pmt:,.2f}", f"-${base_pmt - new_pmt:,.2f} / mo", "inverse")
+        st.metric("Adjusted Friction", f"{new_frict} / 10", f"{new_frict - friction_score:.1f} Points", "inverse")
 
-# TAB 3: CAPITAL & FINANCING COMPOSITION
 with tab3:
-    st.markdown(f"### Capital Structure & Financing Breakdown ({sub_market})")
+    st.markdown("### Capital Structure & Financing")
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("All-Cash Buyers", "25.7%", delta="National Baseline")
-    k2.metric("Conventional Financing", "78.4%", delta="Primary Vehicle")
-    k3.metric("FHA / VA Financing", "21.6%", delta="Entry Buyer Share")
-    k4.metric("Median Down Payment", "$69,250", delta="~16.3% Average")
-    
-    st.divider()
-    st.markdown("#### Capital Distribution Summary")
-    cap_data = pd.DataFrame({
-        "Financing Type": ["Conventional", "All-Cash", "FHA Loan", "VA Loan"],
-        "Share (%)": [58.2, 25.7, 11.2, 4.9]
-    }).set_index("Financing Type")
-    st.bar_chart(cap_data)
+    k1.metric("All-Cash", "25.7%")
+    k2.metric("Conventional", "78.4%")
+    k3.metric("FHA / VA", "21.6%")
+    k4.metric("Median Down", "$69,250")
 
-# TAB 4: VELOCITY & RISK SIGNALS
 with tab4:
-    st.markdown(f"### Risk & Velocity Signals: {sub_market}")
+    st.markdown(f"### Risk & Velocity: {sub_market}")
     v1, v2, v3, v4 = st.columns(4)
-    v1.metric("Local Median DOM", f"{latest_dom} Days", delta="Speed of Sale")
-    v2.metric("Pending Deal Cancellations", "14.0%", delta="National Risk Index")
-    v3.metric("Active Sub-Market Inventory", f"{active_inventory:,}", delta="Available Supply")
-    v4.metric("List-to-Sale Price Ratio", "97.8%", delta="-2.2% Negotiation Margin")
+    v1.metric("Median DOM", f"{latest_dom} Days")
+    v2.metric("Deal Cancellations", "14.0%")
+    v3.metric("Active Inventory", f"{active_inventory:,}")
+    v4.metric("List-to-Sale", "97.8%")
