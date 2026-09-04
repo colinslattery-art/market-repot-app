@@ -3,12 +3,92 @@ import pandas as pd
 import requests
 from google import genai
 
-# --- PAGE CONFIGURATION ---
+# --- PAGE CONFIGURATION & CUSTOM GUI CSS ---
 st.set_page_config(
     page_title="Praxis Report - Market Intelligence Sandbox",
     page_icon="📈",
     layout="wide"
 )
+
+# Inject Custom Branding CSS (Inspired by modern luxury real estate design)
+st.markdown("""
+    <style>
+        /* Global Typography & Background */
+        html, body, [class*="css"] {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #FAFAFA;
+            color: #1a1a1a;
+        }
+        
+        /* Hide Streamlit Header & Footer for a white-label feel */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Metric Box Styling */
+        div[data-testid="stMetricValue"] {
+            font-size: 2rem !important;
+            font-weight: 600 !important;
+            color: #111827 !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.95rem !important;
+            font-weight: 500 !important;
+            color: #6B7280 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        div[data-testid="metric-container"] {
+            background-color: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        /* Primary Button Styling */
+        .stButton>button {
+            background-color: #111827 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 0.5rem 2rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease-in-out;
+        }
+        .stButton>button:hover {
+            background-color: #374151 !important;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        /* Tabs Styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2rem;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 3rem;
+            white-space: pre-wrap;
+            background-color: transparent;
+            border-radius: 0;
+            border-bottom: 2px solid transparent;
+            color: #6B7280;
+            font-weight: 500;
+        }
+        .stTabs [aria-selected="true"] {
+            border-bottom: 2px solid #111827 !important;
+            color: #111827 !important;
+            font-weight: 600;
+        }
+        
+        /* Headings */
+        h1, h2, h3 {
+            font-weight: 600 !important;
+            color: #111827 !important;
+            letter-spacing: -0.01em;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- SECURE API KEYS ---
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -31,7 +111,8 @@ def get_live_rate():
 live_rate = get_live_rate()
 
 # --- APP HEADER ---
-st.title("📈 Praxis Market Intelligence Sandbox")
+st.title("The Praxis Report")
+st.markdown("<p style='font-size: 1.1rem; color: #4B5563; margin-bottom: 2rem;'>Hyper-local market intelligence, leverage analysis, and capital structure insights.</p>", unsafe_allow_html=True)
 
 texas_markets = [
     "Aledo", "Allen", "Celina", "Dallas", "Denton", "Forney", "Fort Worth", "Frisco", 
@@ -61,9 +142,9 @@ local_market_data = {
 
 col_market, col_rate = st.columns([2, 1])
 with col_market:
-    sub_market = st.selectbox("Select Target Sub-Market Area", sorted(texas_markets), index=sorted(texas_markets).index("Tyler"))
+    sub_market = st.selectbox("Target Sub-Market Area", sorted(texas_markets), index=sorted(texas_markets).index("Tyler"))
 with col_rate:
-    st.metric("FRED 30-Yr Benchmark Rate", f"{live_rate}%")
+    st.metric("30-Yr Benchmark Rate", f"{live_rate}%")
 
 # Apply Dynamic Selection
 market_info = local_market_data.get(sub_market, {"income": 84000, "price": 407000, "dom": 49, "inventory": 450})
@@ -72,13 +153,13 @@ latest_median_price = market_info["price"]
 latest_dom = market_info["dom"]
 active_inventory = market_info["inventory"]
 
-st.divider()
+st.write("") # Spacer
 
 # --- SPECIALIZED ANALYTICS TABS ---
-tab1, tab2, tab3 = st.tabs(["🎯 Market Friction & AI Report", "💰 Capital & Financing Structure", "⚠️ Risk & Velocity Signals"])
+tab1, tab2, tab3 = st.tabs(["Market Friction & AI Report", "Capital & Financing Structure", "Risk & Velocity Signals"])
 
 with tab1:
-    st.subheader(f"Interactive Friction Model: {sub_market}")
+    st.markdown("### Interactive Friction Model")
     
     col_left, col_right = st.columns(2)
     with col_left:
@@ -96,11 +177,11 @@ with tab1:
         friction_index, est_monthly_pmt = calc_friction(target_price, interest_rate, median_income)
         
         st.metric("Affordability Friction Score", f"{friction_index} / 10")
-        st.write(f"Estimated Principal & Interest: **${est_monthly_pmt:,.2f} / mo**")
-        st.caption(f"Estimated Local Household Income: **${median_income:,}**")
+        st.markdown(f"<p style='margin-top: 10px; font-weight: 500; color: #374151;'>Estimated Principal & Interest: <b>${est_monthly_pmt:,.2f} / mo</b></p>", unsafe_allow_html=True)
+        st.caption(f"Estimated Local Household Income: ${median_income:,}")
 
     st.divider()
-    if st.button("🚀 Generate AI Report", type="primary"):
+    if st.button("Generate Executive Intelligence Report"):
         if not client:
             st.error("Please add your GEMINI_API_KEY to secrets.")
         else:
@@ -119,7 +200,7 @@ with tab1:
             2. **Sub-Market Heatmap:** A markdown table comparing 3 micro-pockets in/around {sub_market} (Neighborhood, Leverage Index, Buyer Velocity, Market Phase).
             3. **Actionable Playbook:** 1 tactical strategy for Sellers and 1 negotiation point for Buyers.
             """
-            with st.spinner("Generating intelligence report..."):
+            with st.spinner("Compiling Praxis Intelligence Report..."):
                 try:
                     response = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
                     st.markdown(response.text)
@@ -127,7 +208,7 @@ with tab1:
                     st.error(f"Error: {e}")
 
 with tab2:
-    st.subheader(f"Financing Composition ({sub_market})")
+    st.markdown(f"### Financing Composition ({sub_market})")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("All-Cash Buyers", "25.7%")
     c2.metric("Conventional Loans", "78.4%")
@@ -135,7 +216,7 @@ with tab2:
     c4.metric("Median Down Payment", "$69,250")
 
 with tab3:
-    st.subheader(f"Risk & Velocity Signals: {sub_market}")
+    st.markdown(f"### Risk & Velocity Signals: {sub_market}")
     r1, r2, r3, r4 = st.columns(4)
     r1.metric("Local Median Sale Price", f"${latest_median_price:,}")
     r2.metric("Local Days on Market", f"{latest_dom} Days")
