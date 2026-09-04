@@ -57,10 +57,12 @@ def render_css():
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+            
             .ticker-wrap {{ width: 100%; overflow: hidden; background-color: #0F251A; color: #C5A059; padding: 10px 0; font-size: 0.8rem; font-family: 'Montserrat', sans-serif; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; white-space: nowrap; border-bottom: 2px solid #C5A059; margin-bottom: 1.5rem; margin-top: -2rem; }}
             .ticker-move {{ display: inline-block; padding-left: 100%; animation: ticker 40s linear infinite; }}
             .ticker-item {{ padding: 0 2rem; }}
             @keyframes ticker {{ 0% {{ transform: translate(0, 0); }} 100% {{ transform: translate(-100%, 0); }} }}
+            
             .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             p, label, li, td, th, div[data-baseweb="base-input"], .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
@@ -395,6 +397,10 @@ def send_report_email(agent_username, recipient_email, client_name, share_link, 
     except Exception as e: return False, f"SMTP Delivery Error: {e}"
 
 # --- PDF & AI LOGIC ---
+def sanitize_pdf(text):
+    for k, v in {'“':'"', '”':'"', '‘':"'", '’':"'", '—':'--', '–':'-', '…':'...'}.items(): text = text.replace(k, v)
+    return text.encode('latin-1', 'ignore').decode('latin-1')
+
 class PraxisPDF(FPDF):
     def __init__(self, brokerage, logo_path=None):
         super().__init__()
@@ -533,29 +539,58 @@ def render_market_intelligence(locked_city=None, locked_band=None):
     current_data = idx_df[idx_df['Type'] == 'Historical'].iloc[-1]
     
     d1, d2, d3 = st.columns(3)
+    
     def make_dial(val, title, max_val, invert_colors=False):
         t = st.session_state.theme
         c_high = '#E5F0EA' if not invert_colors else '#FCE8E8'
         c_low = '#FCE8E8' if not invert_colors else '#E5F0EA'
+        
         fig = go.Figure(go.Indicator(
-            mode="gauge+number", value=float(val), title={'text': title, 'font': {'color': t['text'], 'size': 14}},
-            gauge={'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 'bar': {'color': t['primary']}, 'bgcolor': "rgba(0,0,0,0)", 
-                   'steps': [{'range': [0, 90], 'color': c_low}, {'range': [90, 110], 'color': '#FDF3E1'}, {'range': [110, max_val], 'color': c_high}]}
+            mode="gauge+number", 
+            value=float(val),
+            number={
+                'font': {'size': 32, 'color': t['primary'], 'family': t['font_header']},
+                'valueformat': ".1f"
+            },
+            title={
+                'text': title, 
+                'font': {'color': t['text'], 'size': 13, 'family': t['font_body']}
+            },
+            gauge={
+                'axis': {'range': [0, max_val], 'tickfont': {'color': t['text'], 'size': 10}}, 
+                'bar': {'color': t['primary'], 'thickness': 0.25}, 
+                'bgcolor': "rgba(0,0,0,0)", 
+                'steps': [
+                    {'range': [0, 90], 'color': c_low}, 
+                    {'range': [90, 110], 'color': '#FDF3E1'}, 
+                    {'range': [110, max_val], 'color': c_high}
+                ]
+            }
         ))
-        fig.update_layout(height=260, margin=dict(l=30, r=30, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        fig.update_layout(
+            height=200, 
+            margin=dict(l=25, r=25, t=60, b=10), 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
         return fig
 
-    with d1: st.plotly_chart(make_dial(current_data['Supply Index'], "Supply Index (100 = Balanced)", 200, True), use_container_width=True)
-    with d2: st.plotly_chart(make_dial(current_data['Demand Index'], "Demand Index (100 = Balanced)", 200), use_container_width=True)
-    with d3: st.plotly_chart(make_dial(current_data['Praxis Market Index'], "Praxis Index (>100 = Seller)", 200), use_container_width=True)
+    with d1: st.plotly_chart(make_dial(current_data['Supply Index'], "Supply Index<br><span style='font-size:10px;color:gray;'>(100 = Balanced)</span>", 200, True), use_container_width=True)
+    with d2: st.plotly_chart(make_dial(current_data['Demand Index'], "Demand Index<br><span style='font-size:10px;color:gray;'>(100 = Balanced)</span>", 200), use_container_width=True)
+    with d3: st.plotly_chart(make_dial(current_data['Praxis Market Index'], "Praxis Index<br><span style='font-size:10px;color:gray;'>(>100 = Seller's Market)</span>", 200), use_container_width=True)
 
     fig = px.line(idx_df, x="Month_Str", y=selected_metric, color="Type", markers=True, 
                   color_discrete_map={"Historical": st.session_state.theme['primary'], "Projected": st.session_state.theme['accent']},
                   line_dash="Type")
+                  
     if "Index" in selected_metric:
         fig.add_hline(y=100, line_dash="dot", line_color="gray", annotation_text="Balanced Market Baseline")
         
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']}, xaxis_title="", yaxis_title="", legend_title_text="")
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+        font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']},
+        xaxis_title="", yaxis_title="", legend_title_text=""
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # ====================================================================
@@ -565,6 +600,7 @@ render_ticker()
 
 query_params = st.query_params
 
+# PUBLIC READ-ONLY TOKEN ROUTING
 if "token" in query_params:
     public_token = query_params["token"]
     client_public_data = db.get_client_by_token(public_token)
@@ -596,6 +632,7 @@ if "token" in query_params:
     else:
         st.error("Invalid or expired share token."); st.stop()
 
+# AUTHENTICATED PORTAL ROUTING
 if not st.session_state.logged_in:
     st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>SECURE ACCESS</span></div>", unsafe_allow_html=True)
@@ -947,18 +984,18 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
         ep = cd['price'] * 0.97 if "Price" in conc else cd['price']
         er = cd['base_rate'] - 2.0 if "2-1" in conc else cd['base_rate'] - 1.0 if "1%" in conc else cd['base_rate']
         
-        bp, np = calc_mortgage(cd['price'], cd['base_rate'], dp), calc_mortgage(ep, max(er, 1.0), dp)
+        bp, np_val = calc_mortgage(cd['price'], cd['base_rate'], dp), calc_mortgage(ep, max(er, 1.0), dp)
         tm, im, hm = (cd['price'] * (cd.get('tax_rate_override', 2.2)/100))/12, (cd['price']*0.005)/12, cd.get('hoa_override', 0)
         
         f2 = go.Figure(data=[
-            go.Bar(name='P&I', x=['Standard', 'Optimized'], y=[bp, np], marker_color=st.session_state.theme['primary']),
+            go.Bar(name='P&I', x=['Standard', 'Optimized'], y=[bp, np_val], marker_color=st.session_state.theme['primary']),
             go.Bar(name='Tax/Ins', x=['Standard', 'Optimized'], y=[tm+im, tm+im], marker_color=st.session_state.theme['accent']),
             go.Bar(name='HOA', x=['Standard', 'Optimized'], y=[hm, hm], marker_color='#E5E5E5')
         ])
         f2.update_layout(barmode='stack', height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': st.session_state.theme['text']})
         st.plotly_chart(f2, use_container_width=True)
         s1, s2, s3 = st.columns(3)
-        s1.metric("Optimized Monthly", f"${np+tm+im+hm:,.2f}", f"-${(bp+tm+im+hm) - (np+tm+im+hm):,.2f}", "inverse")
+        s1.metric("Optimized Monthly", f"${np_val+tm+im+hm:,.2f}", f"-${(bp+tm+im+hm) - (np_val+tm+im+hm):,.2f}", "inverse")
         s2.metric("Effective Rate", f"{max(er, 1.0):.3f}%"); s3.metric("Cash to Close", f"${(ep*(dp/100))+(ep*0.03):,.0f}")
 
     with t3:
