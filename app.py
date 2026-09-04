@@ -30,6 +30,7 @@ def init_state():
         "brokerage": None, 
         "team": None, 
         "display_name": None, 
+        "email": None,
         "view_mode": "login", 
         "wizard_step": 1, 
         "temp_client": {}, 
@@ -85,11 +86,29 @@ def get_conn(): return sqlite3.connect(DB_NAME)
 def init_db():
     with get_conn() as conn:
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, share_token TEXT, payload TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+                     username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, 
+                     team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT,
+                     email TEXT, smtp_server TEXT, smtp_port INTEGER, smtp_user TEXT, smtp_pass TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS clients (
+                     client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, 
+                     client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, 
+                     share_token TEXT, payload TEXT)''')
+        
+        # Schema migration checks for added email columns
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            c.execute("ALTER TABLE users ADD COLUMN smtp_server TEXT")
+            c.execute("ALTER TABLE users ADD COLUMN smtp_port INTEGER")
+            c.execute("ALTER TABLE users ADD COLUMN smtp_user TEXT")
+            c.execute("ALTER TABLE users ADD COLUMN smtp_pass TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         c.execute("SELECT 1 FROM users WHERE username='admin'")
         if not c.fetchone():
-            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
+            c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                      ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
         conn.commit()
 init_db()
 
@@ -97,18 +116,19 @@ class DatabaseEngine:
     def authenticate(self, user, pwd):
         with get_conn() as conn:
             c = conn.cursor()
-            c.execute("SELECT role, brokerage, team, display_name FROM users WHERE username=? AND password=?", (user, hash_pw(pwd)))
+            c.execute("SELECT role, brokerage, team, display_name, email FROM users WHERE username=? AND password=?", (user, hash_pw(pwd)))
             res = c.fetchone()
             if res:
                 c.execute("UPDATE users SET login_count = login_count + 1, last_login = ? WHERE username = ?", (datetime.now().isoformat(), user))
                 conn.commit()
-                return {"role": res[0], "brokerage": res[1], "team": res[2], "display_name": res[3]}
+                return {"role": res[0], "brokerage": res[1], "team": res[2], "display_name": res[3], "email": res[4]}
         return None
 
-    def add_user(self, user, pwd, role, brokerage, team, display_name):
+    def add_user(self, user, pwd, role, brokerage, team, display_name, email=None):
         try:
             with get_conn() as conn:
-                conn.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", (user, hash_pw(pwd), role, brokerage, team, display_name, 0))
+                conn.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, email, login_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                             (user, hash_pw(pwd), role, brokerage, team, display_name, email, 0))
                 conn.commit()
             return True
         except sqlite3.IntegrityError: return False
@@ -129,6 +149,31 @@ class DatabaseEngine:
             return True
         except sqlite3.IntegrityError: return False
 
+    def update_agent_email_settings(self, username, email, smtp_server, smtp_port, smtp_user, smtp_pass):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("""UPDATE users SET email=?, smtp_server=?, smtp_port=?, smtp_user=?, smtp_pass=? 
+                         WHERE username=?""", 
+                      (email, smtp_server, smtp_port, smtp_user, smtp_pass, username))
+            conn.commit()
+
+    def get_user_email_settings(self, username):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT display_name, email, brokerage, smtp_server, smtp_port, smtp_user, smtp_pass FROM users WHERE username=?", (username,))
+            res = c.fetchone()
+            if res:
+                return {
+                    "display_name": res[0],
+                    "email": res[1],
+                    "brokerage": res[2],
+                    "smtp_server": res[3],
+                    "smtp_port": res[4],
+                    "smtp_user": res[5],
+                    "smtp_pass": res[6]
+                }
+            return {}
+
     def delete_user(self, user):
         with get_conn() as conn:
             conn.execute("DELETE FROM users WHERE username=?", (user,))
@@ -137,9 +182,9 @@ class DatabaseEngine:
 
     def get_scoped_users(self, role, brokerage, team):
         with get_conn() as conn:
-            if role == "sysadmin": return pd.read_sql_query("SELECT username, display_name, role, brokerage, team, login_count, last_login FROM users", conn)
-            if role == "broker": return pd.read_sql_query(f"SELECT username, display_name, role, team, login_count FROM users WHERE brokerage='{brokerage}' AND role!='sysadmin'", conn)
-            return pd.read_sql_query(f"SELECT username, display_name, role, login_count FROM users WHERE team='{team}' AND role='agent'", conn)
+            if role == "sysadmin": return pd.read_sql_query("SELECT username, display_name, email, role, brokerage, team, login_count, last_login FROM users", conn)
+            if role == "broker": return pd.read_sql_query(f"SELECT username, display_name, email, role, team, login_count FROM users WHERE brokerage='{brokerage}' AND role!='sysadmin'", conn)
+            return pd.read_sql_query(f"SELECT username, display_name, email, role, login_count FROM users WHERE team='{team}' AND role='agent'", conn)
 
     def save_client(self, cid, user, brokerage, team, data):
         data['agent_owner'] = user
@@ -182,19 +227,39 @@ class DatabaseEngine:
 
 db = DatabaseEngine()
 
-# --- SMTP EMAIL ENGINE ---
-def send_report_email(recipient_email, client_name, agent_display_name, brokerage, share_link, pdf_bytes):
-    smtp_server = st.secrets.get("SMTP_SERVER", None)
-    smtp_port = st.secrets.get("SMTP_PORT", 587)
-    smtp_user = st.secrets.get("SMTP_USERNAME", None)
-    smtp_pass = st.secrets.get("SMTP_PASSWORD", None)
+# --- SCALABLE MULTI-TENANT DYNAMIC EMAIL ENGINE ---
+def send_report_email(agent_username, recipient_email, client_name, share_link, pdf_bytes):
+    agent_info = db.get_user_email_settings(agent_username)
+    
+    agent_display_name = agent_info.get("display_name", agent_username)
+    agent_email = agent_info.get("email", None)
+    brokerage = agent_info.get("brokerage", "PRAXIS TERMINAL")
+
+    # 1. Determine if using Agent Custom SMTP or System Fallback
+    if agent_info.get("smtp_server") and agent_info.get("smtp_user") and agent_info.get("smtp_pass"):
+        smtp_server = agent_info["smtp_server"]
+        smtp_port = agent_info.get("smtp_port") or 587
+        smtp_user = agent_info["smtp_user"]
+        smtp_pass = agent_info["smtp_pass"]
+        sender_header = f"{agent_display_name} <{agent_email or smtp_user}>"
+        reply_to_email = agent_email or smtp_user
+    else:
+        # Fallback to System Transactional Provider (SendGrid/Gmail in secrets.toml)
+        smtp_server = st.secrets.get("SMTP_SERVER", None)
+        smtp_port = st.secrets.get("SMTP_PORT", 587)
+        smtp_user = st.secrets.get("SMTP_USERNAME", None)
+        smtp_pass = st.secrets.get("SMTP_PASSWORD", None)
+        sender_header = f"{agent_display_name} via Praxis <{smtp_user}>"
+        reply_to_email = agent_email or smtp_user
 
     if not all([smtp_server, smtp_user, smtp_pass]):
-        return False, "SMTP server secrets are not configured in secrets.toml."
+        return False, "SMTP delivery server is not configured in agent settings or secrets.toml."
 
     msg = MIMEMultipart()
-    msg['From'] = f"{agent_display_name} <{smtp_user}>"
+    msg['From'] = sender_header
     msg['To'] = recipient_email
+    if reply_to_email:
+        msg['Reply-To'] = reply_to_email
     msg['Subject'] = f"Executive Advisory Brief | {client_name}"
 
     html_body = f"""
@@ -218,7 +283,6 @@ def send_report_email(recipient_email, client_name, agent_display_name, brokerag
     """
     msg.attach(MIMEText(html_body, 'html'))
 
-    # Attach PDF
     pdf_attachment = MIMEApplication(pdf_bytes, _subtype="pdf")
     pdf_attachment.add_header('Content-Disposition', 'attachment', filename=f"Praxis_{client_name.replace(' ', '_')}.pdf")
     msg.attach(pdf_attachment)
@@ -229,7 +293,7 @@ def send_report_email(recipient_email, client_name, agent_display_name, brokerag
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
         server.quit()
-        return True, "Email successfully dispatched."
+        return True, f"Brief successfully sent to {recipient_email}."
     except Exception as e:
         return False, f"SMTP Delivery Error: {e}"
 
@@ -328,7 +392,7 @@ def generate_strategy_memo(agent_name, client_name, report_type, sub_market, pro
     Analysis of prevailing market interest rates ({interest_rate}%), local growth, and debt service implications at ${target_price:,}.
 
     ## MARKET HEALTH & FRICTION ANALYSIS
-    Deep-dive into what the {friction_score}/10 friction score means for liquidity, inventory, and negotiation leverage in {sub_market}.
+    Deep-dive into what the {friction_score}/10 friction means for liquidity, inventory, and negotiation leverage in {sub_market}.
 
     ## STRATEGIC PLAYBOOK
     A concrete 3-phase action plan tailored specifically for a {report_type}.
@@ -412,6 +476,7 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
             st.markdown("### Provision Accounts")
             with st.form("new_user"):
                 n_user, n_pwd, n_name = st.text_input("Username"), st.text_input("Password", type="password"), st.text_input("Display Name")
+                n_email = st.text_input("Agent Email", placeholder="agent@realbroker.com")
                 if st.session_state.role == "sysadmin":
                     n_brok, n_team = st.text_input("Brokerage Name", "Real Broker LLC"), st.text_input("Team Name", "Independent")
                     n_role = st.selectbox("Role", ["agent", "team_admin", "broker"])
@@ -419,7 +484,7 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
                     n_brok, n_team = st.session_state.brokerage, (st.session_state.team if st.session_state.role == "team_admin" else st.text_input("Team Name", "Independent"))
                     n_role = st.selectbox("Role", ["agent", "team_admin"]) if st.session_state.role == "broker" else "agent"
                 if st.form_submit_button("Provision Account"):
-                    if db.add_user(n_user, n_pwd, n_role, n_brok, n_team, n_name): st.success("Created.")
+                    if db.add_user(n_user, n_pwd, n_role, n_brok, n_team, n_name, n_email): st.success("Created.")
                     else: st.error("Username exists.")
         with c2:
             st.markdown("### Active Scope Users")
@@ -493,6 +558,27 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "hub":
     st.markdown("<div style='height: 5vh;'></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
     st.markdown("<h1>Client Hub</h1>", unsafe_allow_html=True)
+    
+    # Sidebar Agent Profile & Custom SMTP Settings Panel
+    with st.sidebar:
+        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important;'>PRAXIS</h2>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: {st.session_state.theme['accent']} !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 1rem;'>AGENT PROFILE</div>", unsafe_allow_html=True)
+        
+        agent_cfg = db.get_user_email_settings(st.session_state.username)
+        with st.expander("Email & Custom SMTP Settings"):
+            with st.form("agent_smtp_form"):
+                cfg_email = st.text_input("Contact Email", value=agent_cfg.get("email") or "")
+                cfg_server = st.text_input("Custom SMTP Host", value=agent_cfg.get("smtp_server") or "", placeholder="e.g. smtp.gmail.com")
+                cfg_port = st.number_input("SMTP Port", value=int(agent_cfg.get("smtp_port") or 587))
+                cfg_user = st.text_input("SMTP Username", value=agent_cfg.get("smtp_user") or "")
+                cfg_pass = st.text_input("SMTP Password", value=agent_cfg.get("smtp_pass") or "", type="password")
+                
+                if st.form_submit_button("Save Email Settings"):
+                    db.update_agent_email_settings(st.session_state.username, cfg_email, cfg_server, cfg_port, cfg_user, cfg_pass)
+                    st.session_state.email = cfg_email
+                    st.success("Profile email settings updated.")
+                    st.rerun()
+
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         c1, c2 = st.columns(2)
@@ -662,10 +748,9 @@ elif st.session_state.view_mode == "sandbox":
                     pdf_bytes = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'])
                     with st.spinner("Dispatching email..."):
                         ok, status_msg = send_report_email(
+                            agent_username=own,
                             recipient_email=recipient,
                             client_name=cd['name'],
-                            agent_display_name=st.session_state.display_name,
-                            brokerage=st.session_state.brokerage,
                             share_link=share_url,
                             pdf_bytes=pdf_bytes
                         )
