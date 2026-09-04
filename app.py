@@ -563,6 +563,8 @@ def render_market_intelligence(locked_city=None, locked_band=None):
 # ====================================================================
 render_ticker()
 
+query_params = st.query_params
+
 if "token" in query_params:
     public_token = query_params["token"]
     client_public_data = db.get_client_by_token(public_token)
