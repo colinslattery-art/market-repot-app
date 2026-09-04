@@ -98,7 +98,6 @@ class DatabaseEngine:
         except sqlite3.IntegrityError: return False
 
     def update_user_credentials(self, old_user, new_user, new_pwd, new_name):
-        """Restored: Admin function to edit user login details and cascade updates to their files."""
         try:
             with get_conn() as conn:
                 c = conn.cursor()
@@ -115,7 +114,6 @@ class DatabaseEngine:
         except sqlite3.IntegrityError: return False
 
     def delete_user(self, user):
-        """Deletes user account and associated client records."""
         with get_conn() as conn:
             conn.execute("DELETE FROM users WHERE username=?", (user,))
             conn.execute("DELETE FROM clients WHERE agent_username=?", (user,))
@@ -260,7 +258,6 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
             c3, c4 = st.columns([1.5, 1])
             with c3:
                 sel_user = st.selectbox("Select User Account to Modify", user_list)
-                # Fetch existing record info
                 user_row = scoped_users[scoped_users['username'] == sel_user].iloc[0]
                 
                 with st.form("edit_user_form"):
@@ -302,152 +299,4 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
             if prompt := st.chat_input("Make it ocean blue..."):
                 with st.spinner("Rebuilding CSS..."):
                     res = run_ai(f"Respond ONLY with valid JSON (keys: primary, accent, bg, text, font_header, font_body) matching: {prompt}", "")
-                    try: st.session_state.theme.update(json.loads(res.replace('```json', '').replace('```', '').strip())); st.rerun()
-                    except: st.error("Theming failed.")
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Revert Default Theme", use_container_width=True): st.session_state.theme = THEME_LIGHT; st.rerun()
-        with sc2:
-            st.markdown("### Telemetry")
-            if st.button("Generate Briefing", use_container_width=True):
-                with st.spinner("Analyzing DB..."):
-                    df_u, df_c = db.get_telemetry()
-                    st.info(run_ai(f"Write a 2-paragraph SaaS admin briefing. Users: {len(df_u)}, Logins: {df_u['login_count'].sum() if not df_u.empty else 0}. Briefs: {len(df_c)}.", "Analytics offline."))
-
-elif st.session_state.role == "agent" and st.session_state.view_mode == "hub":
-    st.markdown("<div style='height: 5vh;'></div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
-    st.markdown("<h1>Client Hub</h1>", unsafe_allow_html=True)
-    _, col2, _ = st.columns([1, 2, 1])
-    with col2:
-        c1, c2 = st.columns(2)
-        with c1: 
-            if st.button("New Client", use_container_width=True): st.session_state.update({"temp_client": {}, "wizard_step": 1, "view_mode": "wizard"}); st.rerun()
-        with c2: 
-            if st.button("Log Out", use_container_width=True): logout()
-        st.divider(); st.markdown("<h3 style='text-align: center;'>ACTIVE PORTFOLIOS</h3>", unsafe_allow_html=True)
-        clients = db.get_scoped_clients("agent", st.session_state.username, None, None)
-        if not clients: st.info("No active clients.")
-        else:
-            for c in clients:
-                st.markdown(f"<div class='client-card'><h3>{c['data']['name']}</h3><p>{c['data']['market']} | {c['data']['type']}</p></div>", unsafe_allow_html=True)
-                if st.button(f"Load {c['data']['name']} ➔", key=f"ld_{c['client_id']}", use_container_width=True):
-                    st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox"}); st.rerun()
-
-elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard":
-    st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</div>", unsafe_allow_html=True)
-    _, col2, _ = st.columns([1, 2, 1])
-    with col2:
-        if st.session_state.wizard_step == 1:
-            st.markdown("<h1>Client Name</h1>", unsafe_allow_html=True)
-            with st.form("w1"):
-                val = st.text_input("Name", label_visibility="collapsed")
-                if st.form_submit_button("Next") and val.strip():
-                    st.session_state.temp_client['name'] = val.title().strip()
-                    st.session_state.wizard_step = 2; st.rerun()
-        elif st.session_state.wizard_step == 2:
-            st.markdown("<h1>Market Area</h1>", unsafe_allow_html=True)
-            with st.form("w2"):
-                val = st.text_input("Market", label_visibility="collapsed")
-                if st.form_submit_button("Next"):
-                    cln = engine.validate_market(val)
-                    if cln: st.session_state.temp_client['market'] = cln; st.session_state.wizard_step = 3; st.rerun()
-                    else: st.error("⚠️ Data Feed Error: No coverage.")
-        elif st.session_state.wizard_step == 3:
-            st.markdown("<h1>Price Point</h1>", unsafe_allow_html=True)
-            with st.form("w3"):
-                val = st.text_input("Price", value=f"${engine.get_market_metrics(st.session_state.temp_client['market'])['price']:,}", label_visibility="collapsed")
-                if st.form_submit_button("Next"):
-                    cln = re.sub(r'[^\d.]', '', val)
-                    if cln: st.session_state.temp_client['price'] = int(float(cln)); st.session_state.wizard_step = 4; st.rerun()
-        elif st.session_state.wizard_step == 4:
-            st.markdown("<h1>Specific Target Property?</h1>", unsafe_allow_html=True)
-            with st.form("w4"):
-                val = st.text_input("Addr", placeholder="(Optional)", label_visibility="collapsed")
-                if st.form_submit_button("Next / Skip"): st.session_state.temp_client['address'] = val.strip(); st.session_state.wizard_step = 5; st.rerun()
-        elif st.session_state.wizard_step == 5:
-            st.markdown("<h1>Strategic Focus</h1>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
-            for col, lbl, typ in zip([c1, c2, c3], ["Buyer Advisory", "Seller Strategy", "Investor Memo"], ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"]):
-                with col:
-                    if st.button(lbl, use_container_width=True): 
-                        st.session_state.temp_client.update({'type': typ, 'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': ""})
-                        cid = str(uuid.uuid4()); db.save_client(cid, st.session_state.username, st.session_state.brokerage, st.session_state.team, st.session_state.temp_client)
-                        st.session_state.update({"active_client_id": cid, "view_mode": "sandbox"}); st.rerun()
-
-elif st.session_state.view_mode == "sandbox":
-    cid = st.session_state.active_client_id
-    cd = db.get_client_by_id(cid)
-    own = cd.get('agent_owner', st.session_state.username)
-    mi = engine.get_market_metrics(cd['market'])
-    
-    with st.sidebar:
-        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important;'>PRAXIS</h2>", unsafe_allow_html=True)
-        if st.button("⬅ Hub", use_container_width=True): st.session_state.view_mode = "admin" if st.session_state.role != "agent" else "hub"; st.rerun()
-        st.divider()
-        if st.radio("UI", ["Light", "Dark"], index=0 if st.session_state.theme['bg'] == '#FBFBF9' else 1, horizontal=True) == "Dark" and st.session_state.theme['bg'] != '#121212':
-            st.session_state.theme = THEME_DARK; st.rerun()
-        elif st.session_state.theme['bg'] != '#FBFBF9' and st.session_state.theme['bg'] != '#121212': pass
-        elif st.session_state.theme['bg'] == '#121212': st.session_state.theme = THEME_LIGHT; st.rerun()
-            
-        st.divider(); st.markdown("### Overrides")
-        nt = st.selectbox("Mode", ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"], index=["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"].index(cd['type']))
-        np = st.number_input("Price ($)", value=cd['price'], step=10000)
-        nr = st.number_input("Rate (%)", value=cd['base_rate'], step=0.125)
-        nx = st.number_input("Tax Rate (%)", value=cd.get('tax_rate_override', 2.2), step=0.1)
-        nh = st.number_input("HOA ($/mo)", value=cd.get('hoa_override', 0), step=10)
-        
-        if any([nt!=cd['type'], np!=cd['price'], nr!=cd['base_rate'], nx!=cd.get('tax_rate_override'), nh!=cd.get('hoa_override')]):
-            cd.update({'type': nt, 'price': np, 'base_rate': nr, 'tax_rate_override': nx, 'hoa_override': nh})
-            db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
-
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()}</div>", unsafe_allow_html=True)
-    st.markdown(f"<h1>{(cd['address'] if cd['address'] else cd['market']).title()}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{cd['name']}</strong> | Strategy: <strong>{cd['type']}</strong></p>", unsafe_allow_html=True)
-    
-    b1, b2, b3, b4 = st.columns(4)
-    b1.metric("Asset Value", f"${cd['price']:,}"); b2.metric("Tax Rate", f"{cd.get('tax_rate_override', 2.2):.2f}%")
-    b3.metric("Monthly HOA", f"${cd.get('hoa_override', 0):,.0f}"); b4.metric("Velocity", f"{mi['dom']} Days")
-    st.divider()
-
-    f_scr = min(round((calc_mortgage(cd['price'], cd['base_rate'], 20) * 12 / mi['income']) * 20, 1), 10.0)
-
-    t1, t2, t3 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix"])
-    with t1:
-        c1, c2 = st.columns([1, 1.5])
-        with c1:
-            fig = go.Figure(go.Indicator(mode="gauge+number", value=f_scr, title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, gauge={'axis': {'range': [None, 10]}, 'bar': {'color': st.session_state.theme['primary']}, 'bgcolor': "transparent", 'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}]}))
-            fig.update_layout(height=250, paper_bgcolor='rgba(0,0,0,0)'); st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            if st.button("Generate Executive Brief", use_container_width=True):
-                with st.spinner("Authoring..."):
-                    cd['saved_brief'] = run_ai(f"Act as {st.session_state.display_name}, luxury Realtor. Client: {cd['name']}. Type: {cd['type']}. Target: {cd['address'] or cd['market']}. Price: ${cd['price']}. Rate: {cd['base_rate']}%. Friction: {f_scr}/10. Tone: Polished. No emojis. Sections: MACRO DYNAMICS, MARKET HEALTH, STRATEGIC PLAYBOOK.")
-                    db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
-            if cd.get('saved_brief'):
-                st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
-                st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf")
-    with t2:
-        col_dp, col_conc = st.columns(2)
-        with col_dp: dp = st.slider("Down Payment (%)", 0, 100, 20, step=5)
-        with col_conc: conc = st.selectbox("Concession", ["None", "2-1 Rate Buydown", "1% Permanent Buydown", "3% Price Reduction"])
-        ep = cd['price'] * 0.97 if "Price" in conc else cd['price']
-        er = cd['base_rate'] - 2.0 if "2-1" in conc else cd['base_rate'] - 1.0 if "1%" in conc else cd['base_rate']
-        
-        bp, np = calc_mortgage(cd['price'], cd['base_rate'], dp), calc_mortgage(ep, max(er, 1.0), dp)
-        tm, im, hm = (cd['price'] * (cd.get('tax_rate_override', 2.2)/100))/12, (cd['price']*0.005)/12, cd.get('hoa_override', 0)
-        
-        f2 = go.Figure(data=[
-            go.Bar(name='P&I', x=['Standard', 'Optimized'], y=[bp, np], marker_color=st.session_state.theme['primary']),
-            go.Bar(name='Tax/Ins', x=['Standard', 'Optimized'], y=[tm+im, tm+im], marker_color=st.session_state.theme['accent']),
-            go.Bar(name='HOA', x=['Standard', 'Optimized'], y=[hm, hm], marker_color='#E5E5E5')
-        ])
-        f2.update_layout(barmode='stack', height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': st.session_state.theme['text']})
-        st.plotly_chart(f2, use_container_width=True)
-        s1, s2, s3 = st.columns(3)
-        s1.metric("Optimized Monthly", f"${np+tm+im+hm:,.2f}", f"-${(bp+tm+im+hm) - (np+tm+im+hm):,.2f}", "inverse")
-        s2.metric("Effective Rate", f"{max(er, 1.0):.3f}%"); s3.metric("Cash to Close", f"${(ep*(dp/100))+(ep*0.03):,.0f}")
-    with t3:
-        r1, r2, r3 = st.columns(3)
-        r1.metric("Absorption Rate", f"{round((mi['inventory'] / (mi['inventory']/3)), 1)} Months")
-        r2.metric("Fall-Through", "14.2%", "Risk Factor", "inverse")
-        r3.metric("List-to-Sale", "-2.4%")
+                    try: st.session_state.theme.update(json.loads(res.replace('```json', '').replace('
