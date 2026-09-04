@@ -45,12 +45,10 @@ def load_master_database():
 
 master_df = load_master_database()
 
-# --- APP HEADER ---
-st.title("📈 Interactive Market Leverage Sandbox")
-st.write("Evaluate local Texas sub-market leverage, affordability friction, and national trend benchmarks in real time.")
-st.caption(f"🌐 Live National 30-Year Fixed Mortgage Rate (FRED): **{live_rate}%**")
+# --- APP HEADER & SUB-MARKET SELECTOR ---
+st.title("📈 Praxis Market Intelligence Sandbox")
+st.write("Real-time sub-market leverage analysis, capital structure breakdowns, and AI report generation.")
 
-# --- SUB-MARKET SELECTOR & LOCAL INCOME MAPPING ---
 texas_markets = [
     "Aledo", "Allen", "Alvarado", "Anna", "Arlington", "Arp", "Athens", "Atlanta", "Aubrey", "Azle", 
     "Balch Springs", "Bedford", "Benbrook", "Blooming Grove", "Blum", "Boyd", "Bridgeport", "Bullard", 
@@ -80,142 +78,169 @@ income_data = {
     "Longview": 56000, "Denton": 68000, "Weatherford": 75000
 }
 
-col_market, col_blank = st.columns([2, 1])
+col_market, col_rate = st.columns([2, 1])
 with col_market:
     sub_market = st.selectbox("Select Target Sub-Market Area", texas_markets, index=texas_markets.index("Tyler") if "Tyler" in texas_markets else 0)
+with col_rate:
+    st.metric("FRED 30-Yr Benchmark Rate", f"{live_rate}%")
 
 median_income = income_data.get(sub_market, 84000)
 
-# --- EXTRACT BENCHMARK METRICS FROM MASTER DATABASE ---
+# Extract core values from master database
+metric_col = 'dataset_type' if 'dataset_type' in master_df.columns else 'source_metric_type'
 latest_median_price = 407730
 latest_dom = 49
 active_inventory = 1462921
-cash_pct = 25.7
-cancellation_pct = 14.0
 
 if not master_df.empty:
-    metric_col = 'dataset_type' if 'dataset_type' in master_df.columns else 'source_metric_type'
-    
-    # Extract housing key metrics
     housing_rows = master_df[master_df[metric_col].isin(['housing_market', 'housing'])]
     if not housing_rows.empty:
         row = housing_rows.iloc[0]
-        price_col = 'median_sale_price_nsa_usd' if 'median_sale_price_nsa_usd' in row and pd.notnull(row['median_sale_price_nsa_usd']) else 'median_sale_price_usd'
-        if price_col in row and pd.notnull(row[price_col]):
-            latest_median_price = int(row[price_col])
+        p_col = 'median_sale_price_nsa_usd' if 'median_sale_price_nsa_usd' in row and pd.notnull(row['median_sale_price_nsa_usd']) else 'median_sale_price_usd'
+        if p_col in row and pd.notnull(row[p_col]):
+            latest_median_price = int(row[p_col])
         if 'median_days_on_market_days' in row and pd.notnull(row['median_days_on_market_days']):
             latest_dom = int(row['median_days_on_market_days'])
         if 'active_listings' in row and pd.notnull(row['active_listings']):
             active_inventory = int(row['active_listings'])
 
-    # Extract Cash % metric
-    cash_rows = master_df[master_df[metric_col].isin(['cash_loan', 'cash'])]
-    if not cash_rows.empty and 'percent_all_cash_pct' in cash_rows.columns:
-        val = cash_rows.iloc[0]['percent_all_cash_pct']
-        if pd.notnull(val):
-            cash_pct = round(float(val), 1)
+st.divider()
 
-    # Extract Cancellation % metric
-    cancel_rows = master_df[master_df[metric_col].isin(['cancellations', 'contract'])]
+# --- SPECIALIZED ANALYTICS TABS ---
+tab1, tab2, tab3 = st.tabs([
+    "🎯 Market Friction & AI Report", 
+    "💰 Capital & Financing Structure", 
+    "⚠️ Risk & Velocity Signals"
+])
+
+# ==============================================================================
+# TAB 1: MARKET FRICTION & AI REPORT
+# ==============================================================================
+with tab1:
+    st.subheader("Interactive Friction Model & AI Intelligence Generation")
+    
+    col_left, col_right = st.columns(2)
+    with col_left:
+        target_price = st.slider("Target Purchase Price ($)", 100000, 2000000, latest_median_price, step=5000)
+        interest_rate = st.slider("Mortgage Rate (%)", 3.0, 10.0, live_rate, step=0.1)
+
+    with col_right:
+        def calc_friction(price, rate, income):
+            r = (rate / 100) / 12
+            n = 360
+            monthly_pmt = price * (r * (1 + r)**n) / ((1 + r)**n - 1)
+            friction_score = min(round((monthly_pmt * 12 / income) * 20, 1), 10.0)
+            return friction_score, round(monthly_pmt, 2)
+
+        friction_index, est_monthly_pmt = calc_friction(target_price, interest_rate, median_income)
+        
+        st.metric("Affordability Friction Score", f"{friction_index} / 10")
+        st.write(f"Estimated Principal & Interest: **${est_monthly_pmt:,.2f} / mo**")
+        st.caption(f"Estimated Household Income for {sub_market}: **${median_income:,}**")
+
+    st.subheader(f"📈 Price Trend Baseline ({sub_market} Context)")
+    if not master_df.empty:
+        chart_df = master_df.dropna(subset=['period_end']).copy()
+        p_col = 'median_sale_price_nsa_usd' if 'median_sale_price_nsa_usd' in chart_df.columns else 'median_sale_price_usd'
+        if p_col in chart_df.columns:
+            chart_data = chart_df[['period_end', p_col]].dropna().rename(columns={'period_end': 'Date', p_col: 'Median Sale Price ($)'}).set_index('Date').sort_index()
+            st.line_chart(chart_data)
+
+    st.divider()
+    st.subheader("🤖 Generate Executive Praxis Intelligence Report")
+    
+    if st.button("🚀 Generate AI Report", type="primary"):
+        if not client:
+            st.error("Please add your `GEMINI_API_KEY` to `.streamlit/secrets.toml`.")
+        else:
+            prompt = f"""
+            Act as an expert real estate market strategist specializing in North Texas real estate.
+            
+            Inputs:
+            - Target Sub-Market Area: {sub_market}
+            - Baseline Price: ${latest_median_price:,} | Target Price: ${target_price:,}
+            - Interest Rate: {interest_rate}% | Local Household Income: ${median_income:,}
+            - Affordability Friction Score: {friction_index} / 10
+            - Days on Market: {latest_dom} days
+            
+            Write an executive report formatted strictly into 3 numbered sections:
+            1. **Applied Dynamics:** Evaluate buyer velocity and target price tolerance given {friction_index}/10 friction.
+            2. **Sub-Market Heatmap:** A markdown table comparing 3 micro-pockets in/around {sub_market} (Neighborhood, Leverage Index, Buyer Velocity, Market Phase).
+            3. **Actionable Playbook:** 1 tactical strategy for Sellers and 1 negotiation point for Buyers.
+            """
+            
+            with st.spinner("Generating intelligence report..."):
+                try:
+                    response = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
+                    st.markdown(response.text)
+                    st.download_button("💾 Download Report (.md)", data=response.text, file_name=f"{sub_market}_Praxis_Report.md")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+# ==============================================================================
+# TAB 2: CAPITAL & FINANCING STRUCTURE
+# ==============================================================================
+with tab2:
+    st.subheader("Financing Composition & Cash Buyer Penetration")
+    
+    cash_rows = master_df[master_df[metric_col].isin(['cash_loan', 'cash'])] if not master_df.empty else pd.DataFrame()
+    
+    cash_pct = 25.7
+    fha_pct = 13.4
+    va_pct = 8.2
+    conv_pct = 78.4
+    median_dp = 69250
+    
+    if not cash_rows.empty:
+        r = cash_rows.iloc[0]
+        cash_pct = float(r.get('percent_all_cash_pct', cash_pct)) if pd.notnull(r.get('percent_all_cash_pct')) else cash_pct
+        fha_pct = float(r.get('percent_fha_loan_pct', fha_pct)) if pd.notnull(r.get('percent_fha_loan_pct')) else fha_pct
+        va_pct = float(r.get('percent_va_loan_pct', va_pct)) if pd.notnull(r.get('percent_va_loan_pct')) else va_pct
+        conv_pct = float(r.get('percent_conventional_loan_pct', conv_pct)) if pd.notnull(r.get('percent_conventional_loan_pct')) else conv_pct
+        median_dp = int(r.get('median_down_payment_usd', median_dp)) if pd.notnull(r.get('median_down_payment_usd')) else median_dp
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("All-Cash Buyers", f"{cash_pct}%")
+    c2.metric("Conventional Loans", f"{conv_pct}%")
+    c3.metric("FHA Loan Share", f"{fha_pct}%")
+    c4.metric("VA Loan Share", f"{va_pct}%")
+    c5.metric("Median Down Payment", f"${median_dp:,}")
+
+    st.divider()
+    st.subheader("📈 Capital Trend (Cash vs Financed Buyers)")
+    if not cash_rows.empty and 'period_end' in cash_rows.columns:
+        cols = [c for c in ['percent_all_cash_pct', 'percent_conventional_loan_pct', 'percent_fha_loan_pct'] if c in cash_rows.columns]
+        c_chart = cash_rows[['period_end'] + cols].dropna().set_index('period_end').sort_index()
+        st.line_chart(c_chart)
+
+# ==============================================================================
+# TAB 3: RISK & VELOCITY SIGNALS
+# ==============================================================================
+with tab3:
+    st.subheader("Market Friction & Fall-Through Metrics")
+    
+    cancel_rows = master_df[master_df[metric_col].isin(['cancellations', 'contract'])] if not master_df.empty else pd.DataFrame()
+    delist_rows = master_df[master_df[metric_col].isin(['delistings', 'delistings_relistings'])] if not master_df.empty else pd.DataFrame()
+    
+    cancel_pct = 14.0
+    total_delistings = 83587
+    
     if not cancel_rows.empty and 'percent_of_pending_sales_pct' in cancel_rows.columns:
         val = cancel_rows.iloc[0]['percent_of_pending_sales_pct']
-        if pd.notnull(val):
-            cancellation_pct = round(float(val), 1)
-
-# Display Key Benchmark Metrics
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Median Sale Price", f"${latest_median_price:,}")
-m2.metric("Days on Market", f"{latest_dom} Days")
-m3.metric("Active Listings", f"{active_inventory:,}")
-m4.metric("Cash Buyers Share", f"{cash_pct}%")
-m5.metric("Deal Fall-Through Rate", f"{cancellation_pct}%")
-
-st.divider()
-
-# --- INPUT SLIDERS & FRICTION CALCULATOR ---
-col_left, col_right = st.columns(2)
-
-with col_left:
-    target_price = st.slider("Target Purchase Price ($)", 100000, 2000000, latest_median_price, step=5000)
-    interest_rate = st.slider("Mortgage Rate (%)", 3.0, 10.0, live_rate, step=0.1)
-
-with col_right:
-    def calc_friction(price, rate, income):
-        monthly_interest_rate = (rate / 100) / 12
-        num_payments = 360
-        monthly_payment = price * (monthly_interest_rate * (1 + monthly_interest_rate)**num_payments) / ((1 + monthly_interest_rate)**num_payments - 1)
-        annual_housing_cost = monthly_payment * 12
-        debt_to_income = annual_housing_cost / income
-        friction_score = min(round(debt_to_income * 20, 1), 10.0)
-        return friction_score, round(monthly_payment, 2)
-
-    friction_index, est_monthly_pmt = calc_friction(target_price, interest_rate, median_income)
-    
-    st.subheader(f"Affordability Friction Score: **{friction_index} / 10**")
-    st.write(f"Estimated Principal & Interest: **${est_monthly_pmt:,.2f} / mo**")
-    st.caption(f"Estimated Median Household Income for {sub_market}: **${median_income:,}**")
-
-# --- HISTORICAL PRICE TREND CHART ---
-st.divider()
-st.subheader(f"📈 Historical Benchmark Price Trend ({sub_market} & National Baseline)")
-
-if not master_df.empty:
-    chart_df = master_df.dropna(subset=['period_end']).copy()
-    
-    # Filter for housing records
-    price_col = 'median_sale_price_nsa_usd' if 'median_sale_price_nsa_usd' in chart_df.columns else 'median_sale_price_usd'
-    if price_col in chart_df.columns:
-        chart_data = chart_df[['period_end', price_col]].dropna()
-        chart_data = chart_data.rename(columns={'period_end': 'Date', price_col: 'Median Sale Price ($)'})
-        chart_data = chart_data.set_index('Date').sort_index()
-        st.line_chart(chart_data)
-    else:
-        st.info("Price trend data preparing...")
-
-# --- GEMINI AI REPORT GENERATOR ---
-st.divider()
-st.subheader("🤖 Generate Praxis Intelligence Report")
-
-if st.button("🚀 Generate AI Report", type="primary"):
-    if not client:
-        st.error("Please add your `GEMINI_API_KEY` to `.streamlit/secrets.toml` to generate reports.")
-    else:
-        prompt = f"""
-        Act as an expert real estate data analyst and market strategist specializing in North Texas real estate.
+        if pd.notnull(val): cancel_pct = float(val)
         
-        Parameters & Data Inputs:
-        - Target Sub-Market Area: {sub_market}
-        - Benchmark Median Sale Price: ${latest_median_price:,}
-        - Client Target Purchase Price: ${target_price:,}
-        - Current Mortgage Rate: {interest_rate}%
-        - Local Median Income: ${median_income:,}
-        - Calculated Affordability Friction Score: {friction_index} / 10
-        - Benchmark Days on Market: {latest_dom} days
-        - National All-Cash Share: {cash_pct}%
-        - Deal Cancellation Rate: {cancellation_pct}%
-        
-        Write a localized, executive real estate intelligence report modeled after 'The Praxis Report' specifically tailored for {sub_market}.
-        
-        Strictly format your response with these exact 3 numbered sections:
-        
-        1. **Applied Dynamics:** Analyze how the {friction_index}/10 Affordability Friction score impacts buyer velocity and price tolerance in {sub_market}. Compare the client's Target Price (${target_price:,}) against the market median (${latest_median_price:,}). Incorporate the impact of {interest_rate}% interest rates, the {cash_pct}% cash buyer presence, and the {cancellation_pct}% deal cancellation rate on market velocity.
-        
-        2. **Sub-Market Heatmap:**
-        Create a clean Markdown table comparing 3 distinct neighborhoods or micro-pockets within or immediately surrounding {sub_market}.
-        Include columns for Neighborhood / Pocket, Leverage Index, Buyer Velocity, and Market Phase:
-        | Neighborhood / Pocket | Leverage Index | Buyer Velocity | Market Phase |
-        
-        3. **Actionable Playbook:**
-        - **For Sellers:** Provide 1 specific, tactical pricing or concession strategy to prevent deal cancellation and stand out to buyers given current friction levels.
-        - **For Buyers:** Provide 1 specific negotiation leverage point (e.g., rate buydowns, inspection repair credits) to maximize buying power in {sub_market}.
-        """
-        
-        with st.spinner(f"Analyzing market dynamics for {sub_market}..."):
-            try:
-                response = client.models.generate_content(
-                    model='gemini-3.6-flash',
-                    contents=prompt
-                )
-                st.markdown(response.text)
-            except Exception as e:
-                st.error(f"Error generating AI report: {e}")
+    if not delist_rows.empty and 'total_delistings' in delist_rows.columns:
+        val = delist_rows.iloc[0]['total_delistings']
+        if pd.notnull(val): total_delistings = int(val)
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Pending Deal Cancellations", f"{cancel_pct}%")
+    r2.metric("Total Stale Delistings", f"{total_delistings:,}")
+    r3.metric("Median Days on Market", f"{latest_dom} Days")
+    r4.metric("Active Inventory Pool", f"{active_inventory:,}")
+
+    st.divider()
+    st.subheader("📈 Contract Cancellation Rate Trend (%)")
+    if not cancel_rows.empty and 'percent_of_pending_sales_pct' in cancel_rows.columns:
+        cancel_chart = cancel_rows[['period_end', 'percent_of_pending_sales_pct']].dropna().rename(columns={'percent_of_pending_sales_pct': 'Cancellation Rate (%)'}).set_index('period_end').sort_index()
+        st.line_chart(cancel_chart)
