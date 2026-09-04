@@ -104,6 +104,38 @@ class DatabaseEngine:
         conn.close()
         return success
 
+    def update_user(self, old_username, new_username, new_password=None):
+        """Allows Admin to update an agent's username and cascade the update to their clients."""
+        conn = sqlite3.connect("praxis_database.db")
+        c = conn.cursor()
+        old_username, new_username = old_username.lower(), new_username.lower()
+        try:
+            if old_username != new_username:
+                if new_password:
+                    c.execute("UPDATE users SET username=?, password=? WHERE username=?", (new_username, hash_password(new_password), old_username))
+                else:
+                    c.execute("UPDATE users SET username=? WHERE username=?", (new_username, old_username))
+                # Cascade update to clients table so they don't lose access
+                c.execute("UPDATE clients SET agent_username=? WHERE agent_username=?", (new_username, old_username))
+            else:
+                if new_password:
+                    c.execute("UPDATE users SET password=? WHERE username=?", (hash_password(new_password), old_username))
+            conn.commit()
+            success = True
+        except sqlite3.IntegrityError:
+            success = False
+        conn.close()
+        return success
+
+    def delete_user(self, username):
+        """Deletes an agent and purges their client roster."""
+        conn = sqlite3.connect("praxis_database.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE username=?", (username.lower(),))
+        c.execute("DELETE FROM clients WHERE agent_username=?", (username.lower(),))
+        conn.commit()
+        conn.close()
+
     def get_all_users(self):
         conn = sqlite3.connect("praxis_database.db")
         df = pd.read_sql_query("SELECT username, role FROM users", conn)
@@ -111,7 +143,6 @@ class DatabaseEngine:
         return df
 
     def check_client_exists(self, agent_username, client_name):
-        """Prevents an agent from creating two clients with the exact same name."""
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
         c.execute("SELECT 1 FROM clients WHERE agent_username=? AND LOWER(client_name)=?", (agent_username.lower(), client_name.lower()))
@@ -122,7 +153,7 @@ class DatabaseEngine:
     def save_client(self, client_id, agent_username, client_data):
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
-        client_data['agent_owner'] = agent_username.lower() # Tag payload with owner
+        client_data['agent_owner'] = agent_username.lower()
         payload = json.dumps(client_data)
         c.execute('''INSERT OR REPLACE INTO clients 
                      (client_id, agent_username, client_name, market, target_price, address, report_type, payload) 
@@ -141,7 +172,6 @@ class DatabaseEngine:
         return {row[0]: json.loads(row[1]) for row in rows}
         
     def get_all_clients_admin(self):
-        """Fetches all clients globally for the God Mode view."""
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
         c.execute("SELECT client_id, agent_username, payload FROM clients")
@@ -150,7 +180,6 @@ class DatabaseEngine:
         return [{"client_id": r[0], "agent": r[1], "data": json.loads(r[2])} for r in rows]
 
     def get_client_by_id(self, client_id):
-        """Fetches a specific client regardless of who owns it."""
         conn = sqlite3.connect("praxis_database.db")
         c = conn.cursor()
         c.execute("SELECT payload FROM clients WHERE client_id=?", (client_id,))
@@ -276,7 +305,7 @@ if not st.session_state.logged_in:
             if st.form_submit_button("Authenticate"):
                 role = db.authenticate(user, pwd)
                 if role:
-                    st.session_state.update({"logged_in": True, "username": user.lower(), "role": role, "view_mode": "hub" if role == "agent" else "admin"})
+                    st.session_state.update({"logged_in": True, "username": user.lower(), "role": role, "view_mode": "admin" if role == "admin" else "hub"})
                     st.rerun()
                 else:
                     st.error("Authentication failed. Invalid credentials.")
@@ -291,7 +320,7 @@ elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
     if st.button("Log Out"): logout()
     st.divider()
     
-    t1, t2 = st.tabs(["Agent Provisioning", "Global Client Database (God Mode)"])
+    t1, t2 = st.tabs(["Agent Management", "Global Client Database (God Mode)"])
     
     with t1:
         st.markdown("### Provision New Agent Account")
@@ -301,12 +330,45 @@ elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
                 n_user = st.text_input("New Username")
                 n_pwd = st.text_input("Initial Password", type="password")
                 if st.form_submit_button("Create Account"):
-                    if db.add_user(n_user, n_pwd): st.success(f"Account '{n_user}' provisioned. They may now log in.")
-                    else: st.error("Username already exists. Usernames must be strictly unique.")
+                    if db.add_user(n_user, n_pwd): st.success(f"Account '{n_user}' provisioned.")
+                    else: st.error("Username already exists.")
+                    
         with c2:
             st.markdown("### Active System Users")
-            st.dataframe(db.get_all_users(), hide_index=True, use_container_width=True)
-            
+            all_users = db.get_all_users()
+            st.dataframe(all_users, hide_index=True, use_container_width=True)
+
+        st.divider()
+        st.markdown("### Manage Existing Agents")
+        agent_list = all_users[all_users['role'] != 'admin']['username'].tolist()
+        
+        c3, c4 = st.columns([1, 1])
+        with c3:
+            if agent_list:
+                selected_agent = st.selectbox("Select Agent to Modify", agent_list)
+                with st.form("manage_user"):
+                    mod_user = st.text_input("Update Username", value=selected_agent)
+                    mod_pwd = st.text_input("New Password", placeholder="Leave blank to keep current password", type="password")
+                    
+                    if st.form_submit_button("Update Agent Credentials"):
+                        if db.update_user(selected_agent, mod_user, mod_pwd if mod_pwd else None):
+                            st.success(f"Agent credentials updated successfully.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Update failed. Username may already be in use.")
+            else:
+                st.info("No agents available to manage.")
+                
+        with c4:
+            if agent_list:
+                st.markdown("<br><br>", unsafe_allow_html=True) # Spacer
+                if st.button("Delete Selected Agent & Purge Data", type="primary"):
+                    db.delete_user(selected_agent)
+                    st.warning(f"Agent '{selected_agent}' and their client data deleted.")
+                    time.sleep(1)
+                    st.rerun()
+
     with t2:
         st.markdown("### System-Wide Intelligence Activity")
         global_clients = db.get_all_clients_admin()
@@ -377,7 +439,6 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard"
                 client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
                 if st.form_submit_button("Continue") and client_input.strip():
                     clean_name = client_input.title().strip()
-                    # UNIQUENESS CHECK
                     if db.check_client_exists(st.session_state.username, clean_name):
                         st.error(f"⚠️ Client '{clean_name}' already exists in your roster. Please use a unique identifier (e.g., '{clean_name} - Buyer').")
                     else:
@@ -440,7 +501,6 @@ elif st.session_state.view_mode == "sandbox":
     cid = st.session_state.active_client_id
     client_data = db.get_client_by_id(cid)
     
-    # Identify who actually owns this client data to save overrides back correctly
     owner_agent = client_data.get('agent_owner', st.session_state.username)
     market_info = engine.get_market_metrics(client_data['market'])
     
@@ -464,7 +524,6 @@ elif st.session_state.view_mode == "sandbox":
         new_tax = st.number_input("Tax Rate (%)", value=client_data.get('tax_rate_override', 2.2), step=0.1)
         new_hoa = st.number_input("HOA ($/mo)", value=client_data.get('hoa_override', 0), step=10)
         
-        # Save overrides 
         if (new_type != client_data['type'] or new_price != client_data['price'] or 
             new_rate != client_data['base_rate'] or new_tax != client_data.get('tax_rate_override') or 
             new_hoa != client_data.get('hoa_override')):
