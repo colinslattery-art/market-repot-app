@@ -61,7 +61,6 @@ def render_css():
             .ticker-move {{ display: inline-block; padding-left: 100%; animation: ticker 40s linear infinite; }}
             .ticker-item {{ padding: 0 2rem; }}
             @keyframes ticker {{ 0% {{ transform: translate(0, 0); }} 100% {{ transform: translate(-100%, 0); }} }}
-            
             .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             p, label, li, td, th, div[data-baseweb="base-input"], .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
@@ -191,10 +190,8 @@ class DatabaseEngine:
             return {}
     def save_brokerage_logo(self, brokerage, base64_str):
         with get_conn() as conn:
-            if base64_str:
-                conn.execute("INSERT OR REPLACE INTO brokerage_settings (brokerage, logo_base64) VALUES (?, ?)", (brokerage, base64_str))
-            else:
-                conn.execute("DELETE FROM brokerage_settings WHERE brokerage=?", (brokerage,))
+            if base64_str: conn.execute("INSERT OR REPLACE INTO brokerage_settings (brokerage, logo_base64) VALUES (?, ?)", (brokerage, base64_str))
+            else: conn.execute("DELETE FROM brokerage_settings WHERE brokerage=?", (brokerage,))
             conn.commit()
     def get_brokerage_logo(self, brokerage):
         with get_conn() as conn:
@@ -517,38 +514,33 @@ def run_ai(prompt, fallback="Error"):
 
 def clean_json_res(raw_text): return raw_text.replace("```json", "").replace("```", "").strip()
 
-def render_market_intelligence():
-    st.markdown("### Proprietary Market Index")
-    st.write("Dynamic analysis of historical demand, supply, and equilibrium models.")
-    
-    col_mq1, col_mq2, col_mq3 = st.columns(3)
-    with col_mq1: selected_city = st.selectbox("Market Area", list(engine.LOCAL.keys()), index=4)
-    with col_mq2: selected_band = st.selectbox("Price Tier", ["All", "< $400k", "$400k - $600k", "$600k+"], index=2)
-    with col_mq3: selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"])
-    
+def render_market_intelligence(locked_city=None, locked_band=None):
+    if locked_city and locked_band:
+        st.markdown(f"### Local Market Dynamics: {locked_city.title()}")
+        st.write(f"Displaying tailored data for the **{locked_band}** price tier based on this portfolio's parameters.")
+        selected_city = locked_city
+        selected_band = locked_band
+        selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"], key=f"metric_{locked_city}")
+    else:
+        st.markdown("### Proprietary Market Index")
+        st.write("Dynamic analysis of historical demand, supply, and equilibrium models.")
+        col_mq1, col_mq2, col_mq3 = st.columns(3)
+        with col_mq1: selected_city = st.selectbox("Market Area", list(engine.LOCAL.keys()), index=4)
+        with col_mq2: selected_band = st.selectbox("Price Tier", ["All", "< $400k", "$400k - $600k", "$600k+"], index=2)
+        with col_mq3: selected_metric = st.selectbox("Metric View", ["Praxis Market Index", "Demand Index", "Supply Index", "Days on Market"])
+        
     idx_df = engine.generate_praxis_index_timeseries(selected_city, selected_band)
     current_data = idx_df[idx_df['Type'] == 'Historical'].iloc[-1]
     
     d1, d2, d3 = st.columns(3)
-    
     def make_dial(val, title, max_val, invert_colors=False):
         t = st.session_state.theme
         c_high = '#E5F0EA' if not invert_colors else '#FCE8E8'
         c_low = '#FCE8E8' if not invert_colors else '#E5F0EA'
         fig = go.Figure(go.Indicator(
-            mode="gauge+number", 
-            value=float(val), 
-            title={'text': title, 'font': {'color': t['text'], 'size': 14}},
-            gauge={
-                'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 
-                'bar': {'color': t['primary']}, 
-                'bgcolor': "rgba(0,0,0,0)", 
-                'steps': [
-                    {'range': [0, 90], 'color': c_low}, 
-                    {'range': [90, 110], 'color': '#FDF3E1'}, 
-                    {'range': [110, max_val], 'color': c_high}
-                ]
-            }
+            mode="gauge+number", value=float(val), title={'text': title, 'font': {'color': t['text'], 'size': 14}},
+            gauge={'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 'bar': {'color': t['primary']}, 'bgcolor': "rgba(0,0,0,0)", 
+                   'steps': [{'range': [0, 90], 'color': c_low}, {'range': [90, 110], 'color': '#FDF3E1'}, {'range': [110, max_val], 'color': c_high}]}
         ))
         fig.update_layout(height=260, margin=dict(l=30, r=30, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         return fig
@@ -560,15 +552,10 @@ def render_market_intelligence():
     fig = px.line(idx_df, x="Month_Str", y=selected_metric, color="Type", markers=True, 
                   color_discrete_map={"Historical": st.session_state.theme['primary'], "Projected": st.session_state.theme['accent']},
                   line_dash="Type")
-                  
     if "Index" in selected_metric:
         fig.add_hline(y=100, line_dash="dot", line_color="gray", annotation_text="Balanced Market Baseline")
         
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-        font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']},
-        xaxis_title="", yaxis_title="", legend_title_text=""
-    )
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': st.session_state.theme['text'], 'family': st.session_state.theme['font_body']}, xaxis_title="", yaxis_title="", legend_title_text="")
     st.plotly_chart(fig, use_container_width=True)
 
 # ====================================================================
@@ -576,8 +563,6 @@ def render_market_intelligence():
 # ====================================================================
 render_ticker()
 
-# PUBLIC READ-ONLY TOKEN ROUTING
-query_params = st.query_params
 if "token" in query_params:
     public_token = query_params["token"]
     client_public_data = db.get_client_by_token(public_token)
@@ -609,7 +594,6 @@ if "token" in query_params:
     else:
         st.error("Invalid or expired share token."); st.stop()
 
-# AUTHENTICATED PORTAL ROUTING
 if not st.session_state.logged_in:
     st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>SECURE ACCESS</span></div>", unsafe_allow_html=True)
@@ -925,9 +909,9 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
     f_scr = min(round((calc_mortgage(cd['price'], cd['base_rate'], 20) * 12 / mi['income']) * 20, 1), 10.0)
 
     if not is_client:
-        t1, t2, t3, t4 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix", "Client Portal Provisioning"])
+        t1, t_intel, t2, t3, t4 = st.tabs(["Strategy Brief", "Market Intelligence", "Deal Stack Optimizer", "Capital Matrix", "Client Portal Provisioning"])
     else:
-        t1, t2, t3 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix"])
+        t1, t_intel, t2, t3 = st.tabs(["Strategy Brief", "Market Intelligence", "Deal Stack Optimizer", "Capital Matrix"])
     
     with t1:
         c1, c2 = st.columns([1, 1.5])
@@ -949,6 +933,10 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
                 st.download_button("Download PDF", pdf_b, f"Praxis_{cd['name']}.pdf", "application/pdf", use_container_width=True)
             elif is_client:
                 st.info("Your advisor is currently authoring the executive brief for this portfolio.")
+
+    with t_intel:
+        c_band = "< $400k" if cd['price'] < 400000 else "$400k - $600k" if cd['price'] <= 600000 else "$600k+"
+        render_market_intelligence(locked_city=cd['market'], locked_band=c_band)
 
     with t2:
         col_dp, col_conc = st.columns(2)
