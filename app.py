@@ -9,14 +9,14 @@ from fpdf import FPDF
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Praxis Report | Colin Slattery", page_icon="🏛️", layout="wide")
 
-# --- BESPOKE LUXURY BRAND CSS ---
+# --- ULTRA-LUXURY BRAND CSS ---
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
         
         html, body, [class*="css"] { 
             font-family: 'Montserrat', sans-serif; 
-            background-color: #FBFBF9; 
+            background-color: #FBFBF9; /* Warm luxury cream */
             color: #1A1A1A;
         }
         #MainMenu, footer, header {visibility: hidden;}
@@ -24,8 +24,9 @@ st.markdown("""
         h1, h2, h3 { 
             font-family: 'Playfair Display', serif; 
             font-weight: 500; 
-            color: #0F251A; 
+            color: #0F251A; /* Deep Forest Green */
             letter-spacing: 0.02em; 
+            text-align: center;
         }
         
         .brand-header {
@@ -34,20 +35,35 @@ st.markdown("""
             text-transform: uppercase;
             letter-spacing: 0.25em;
             font-size: 0.8rem;
-            color: #C5A059; 
-            margin-bottom: 1rem;
+            color: #C5A059; /* Champagne Gold */
+            margin-bottom: 2rem;
+            margin-top: 1rem;
         }
         
-        /* Wizard Card Styling */
-        .wizard-card {
-            background-color: #FFFFFF;
-            padding: 3rem;
-            border-top: 3px solid #0F251A;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.03);
-            text-align: center;
-            margin-top: 2rem;
+        /* Form & Input Overrides (The Typeform Look) */
+        [data-testid="stForm"] { 
+            border: none !important; 
+            background-color: transparent !important; 
         }
+        div[data-baseweb="input"] {
+            background-color: transparent !important;
+            border: none !important;
+            border-bottom: 2px solid #0F251A !important;
+            border-radius: 0 !important;
+        }
+        div[data-baseweb="input"] > div { background-color: transparent !important; }
         
+        /* Make the typed text beautiful */
+        input {
+            font-family: 'Playfair Display', serif !important;
+            font-size: 1.8rem !important;
+            color: #0F251A !important;
+            text-align: center !important;
+            padding: 1rem !important;
+        }
+        input::placeholder { color: #D1D1D1 !important; font-family: 'Montserrat', sans-serif !important; font-size: 1.2rem !important; }
+        
+        /* Dashboard Metric Cards - Minimalist */
         div[data-testid="metric-container"] {
             background-color: transparent !important;
             border: none !important;
@@ -58,11 +74,12 @@ st.markdown("""
         div[data-testid="stMetricValue"] { font-family: 'Playfair Display', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: #0F251A !important; }
         div[data-testid="stMetricLabel"] { font-size: 0.75rem !important; font-weight: 600 !important; color: #777777 !important; text-transform: uppercase; letter-spacing: 0.15em; }
         
-        .stTabs [data-baseweb="tab-list"] { gap: 3rem; border-bottom: 1px solid #EAEAEA; }
+        /* Dashboard Tabs */
+        .stTabs [data-baseweb="tab-list"] { gap: 3rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }
         .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent; color: #888; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
-        /* Form Buttons */
+        /* Buttons */
         .stButton>button, .stFormSubmitButton>button { 
             background-color: #0F251A !important; 
             color: #FBFBF9 !important; 
@@ -74,6 +91,7 @@ st.markdown("""
             letter-spacing: 0.15em; 
             transition: 0.4s; 
             width: 100%;
+            margin-top: 1rem;
         }
         .stButton>button:hover, .stFormSubmitButton>button:hover { 
             background-color: #C5A059 !important; 
@@ -81,7 +99,7 @@ st.markdown("""
             color: #FFFFFF !important; 
         }
         
-        hr { border-color: #E5E5E5; }
+        hr { border-color: #EAEAEA; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -100,7 +118,7 @@ def get_live_rate():
 
 live_rate = get_live_rate()
 
-# --- STRICT DATA GOVERNANCE (MASTER DICTIONARY) ---
+# --- MASTER DICTIONARY ---
 local_market_data = {
     "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
     "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
@@ -169,41 +187,35 @@ if "wizard_step" not in st.session_state:
     st.session_state.custom_market_data = None
 
 # ====================================================================
-# PHASE 1: DISAPPEARING TYPEFORM WIZARD 
+# PHASE 1: DISAPPEARING TYPEFORM WIZARD (CLEAN LAYOUT)
 # ====================================================================
 if st.session_state.wizard_step <= 4:
-    st.markdown("<div style='height: 8vh;'></div>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 3.5rem;'>The Praxis Report</h1>", unsafe_allow_html=True)
-    st.markdown("<div class='brand-header'>Client Intake & Intelligence Routing</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='brand-header'>COLIN SLATTERY | REAL BROKER LLC</div>", unsafe_allow_html=True)
     
-    # Center the wizard card using columns
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown("<div class='wizard-card'>", unsafe_allow_html=True)
-        
         # STEP 1: CLIENT NAME
         if st.session_state.wizard_step == 1:
-            st.markdown("<h3>Who are we advising today?</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the client or entity name below.</p>", unsafe_allow_html=True)
+            st.markdown("<h1>Who are we advising today?</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the client or entity name below.</p>", unsafe_allow_html=True)
             with st.form("step1_form"):
                 client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
-                submitted = st.form_submit_button("Continue ➔")
+                submitted = st.form_submit_button("Continue")
                 if submitted:
                     if client_input.strip() != "":
                         st.session_state.client_name = client_input.title().strip()
                         st.session_state.wizard_step = 2
                         st.rerun()
-                    else:
-                        st.error("Please enter a client name to proceed.")
 
         # STEP 2: MARKET SELECTION
         elif st.session_state.wizard_step == 2:
-            st.markdown(f"<h3>Which Texas sub-market are we analyzing for {st.session_state.client_name}?</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the city name to verify live MLS data coverage.</p>", unsafe_allow_html=True)
+            st.markdown(f"<h1>Which Texas sub-market are we analyzing for {st.session_state.client_name}?</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the city name to verify live MLS data coverage.</p>", unsafe_allow_html=True)
             with st.form("step2_form"):
                 market_input = st.text_input("Market Area", placeholder="e.g., Lindale, Richardson, Dallas", label_visibility="collapsed")
-                submitted = st.form_submit_button("Verify Data Feed ➔")
+                submitted = st.form_submit_button("Verify Data Feed")
                 if submitted:
                     market_clean = market_input.title().split(',')[0].strip()
                     if market_clean in local_market_data:
@@ -212,44 +224,43 @@ if st.session_state.wizard_step <= 4:
                         st.session_state.wizard_step = 3
                         st.rerun()
                     else:
-                        st.error(f"⚠️ Data Feed Error: No active coverage for '{market_clean}'. Examples: Lindale, Frisco, Tyler.")
+                        st.error(f"⚠️ Data Feed Error: No active coverage for '{market_clean}'. Please try Lindale, Frisco, or Tyler.")
 
         # STEP 3: ASSET PRICE
         elif st.session_state.wizard_step == 3:
-            st.markdown(f"<h3>Data verified for {st.session_state.target_market}. What is the target asset value?</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the estimated purchase or list price.</p>", unsafe_allow_html=True)
+            st.markdown(f"<h1>Data verified for {st.session_state.target_market}. What is the target asset value?</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Enter the estimated purchase or list price.</p>", unsafe_allow_html=True)
             with st.form("step3_form"):
                 default_price = st.session_state.custom_market_data['price']
-                price_input = st.number_input("Target Price ($)", min_value=50000, max_value=20000000, value=default_price, step=10000, label_visibility="collapsed")
-                submitted = st.form_submit_button("Lock Asset Value ➔")
+                # Streamlit number_input isn't easily styled to match the text input, so we use text input for aesthetics
+                price_input = st.text_input("Target Price ($)", value=f"{default_price:,}", label_visibility="collapsed")
+                submitted = st.form_submit_button("Lock Asset Value")
                 if submitted:
-                    st.session_state.target_price = price_input
-                    st.session_state.wizard_step = 4
-                    st.rerun()
+                    try:
+                        clean_price = int(price_input.replace("$", "").replace(",", "").strip())
+                        st.session_state.target_price = clean_price
+                        st.session_state.wizard_step = 4
+                        st.rerun()
+                    except:
+                        st.error("Please enter a valid number (e.g., 450000).")
 
         # STEP 4: STRATEGIC FOCUS
         elif st.session_state.wizard_step == 4:
-            st.markdown("<h3>Finally, what is the strategic focus?</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
+            st.markdown("<h1>Finally, what is the strategic focus?</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 3rem; text-align: center;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
             
-            c_buyer, c_seller, c_investor = st.columns(3)
-            with c_buyer:
-                if st.button("Buyer Advisory"):
-                    st.session_state.report_type = "Buyer Advisory Brief"
-                    st.session_state.wizard_step = 5
-                    st.rerun()
-            with c_seller:
-                if st.button("Seller Strategy"):
-                    st.session_state.report_type = "Seller Disposition Strategy"
-                    st.session_state.wizard_step = 5
-                    st.rerun()
-            with c_investor:
-                if st.button("Investor Memo"):
-                    st.session_state.report_type = "Investor Acquisition Memo"
-                    st.session_state.wizard_step = 5
-                    st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
+            if st.button("Buyer Advisory"):
+                st.session_state.report_type = "Buyer Advisory Brief"
+                st.session_state.wizard_step = 5
+                st.rerun()
+            if st.button("Seller Strategy"):
+                st.session_state.report_type = "Seller Disposition Strategy"
+                st.session_state.wizard_step = 5
+                st.rerun()
+            if st.button("Investor Memo"):
+                st.session_state.report_type = "Investor Acquisition Memo"
+                st.session_state.wizard_step = 5
+                st.rerun()
 
 # ====================================================================
 # PHASE 2: GENERATED LUXURY DASHBOARD
@@ -305,7 +316,7 @@ if st.session_state.wizard_step == 5:
     with tab1:
         c_left, c_right = st.columns([1, 2])
         with c_left:
-            st.markdown(f"<div style='margin-top: 1.5rem;'><span style='color:#C5A059; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.1em;'>Friction Index</span><h2 style='margin:0; font-size: 2.5rem; color:#0F251A;'>{friction_score} <span style='font-size:1.2rem; color:#888;'>/ 10.0</span></h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='margin-top: 1.5rem;'><span style='color:#C5A059; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.1em;'>Friction Index</span><h2 style='margin:0; font-size: 3rem; color:#0F251A;'>{friction_score} <span style='font-size:1.2rem; color:#888;'>/ 10.0</span></h2></div>", unsafe_allow_html=True)
             st.progress(friction_score / 10.0)
             st.markdown(f"<p style='color:#777; font-size:0.9rem; margin-top: 1rem;'>Baseline Debt Service (20% Down): <br><strong style='color:#111; font-size: 1.25rem;'>${base_pmt:,.2f} / mo</strong></p>", unsafe_allow_html=True)
 
@@ -334,14 +345,13 @@ if st.session_state.wizard_step == 5:
                                 label="Download Report as PDF",
                                 data=pdf_bytes,
                                 file_name=f"Praxis_Report_{client_name.replace(' ','_')}.pdf",
-                                mime="application/pdf",
-                                type="primary"
+                                mime="application/pdf"
                             )
                         except Exception as e:
                             st.error(f"Error compiling document: {e}")
 
     with tab2:
-        st.markdown("### Deal Stack Optimizer")
+        st.markdown("<h2 style='text-align: left;'>Deal Stack Optimizer</h2>", unsafe_allow_html=True)
         st.write("Compare baseline financing against negotiated seller concessions.")
         col_dp, col_conc = st.columns(2)
         with col_dp:
@@ -362,7 +372,7 @@ if st.session_state.wizard_step == 5:
         s3.metric("Cash to Close (Est.)", f"${(eff_price * (dp_pct/100)) + (eff_price * 0.03):,.0f}")
 
     with tab3:
-        st.markdown("### Market Capital Matrix")
+        st.markdown("<h2 style='text-align: left;'>Market Capital Matrix</h2>", unsafe_allow_html=True)
         st.write(f"Evaluating liquidity for {sub_market}.")
         r1, r2, r3 = st.columns(3)
         r1.metric("Absorption Rate", f"{round((market_info['inventory'] / (market_info['inventory']/3)), 1)} Months")
