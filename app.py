@@ -34,8 +34,7 @@ def init_state():
         "view_mode": "login", 
         "wizard_step": 1, 
         "temp_client": {}, 
-        "active_client_id": None,
-        "return_to": "hub"
+        "active_client_id": None
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -46,39 +45,71 @@ def logout():
     init_state()
     st.rerun()
 
-# --- CSS INJECTION ---
+# --- REFINED CSS INJECTION ---
 def render_css():
     t = st.session_state.theme
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+            
+            /* Global Colors & Fonts */
             .stApp, .main, .block-container {{ background-color: {t['bg']} !important; }}
-            html, body, p, span, label, li, td, th {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
+            h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
+            p, li, label {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']}; }}
             #MainMenu, footer, header {{visibility: hidden;}}
-            h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; letter-spacing: 0.02em !important; text-align: center; }}
-            .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; }}
-            [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; }}
-            div[data-baseweb="input"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
-            div[data-baseweb="input"] > div {{ background-color: transparent !important; }}
-            input {{ font-family: '{t['font_header']}', serif !important; font-size: 1.5rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 1rem !important; background-color: transparent !important; }}
-            input::placeholder {{ color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 1rem !important; }}
-            .client-card {{ background-color: transparent; border: 1px solid #EAEAEA; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; }}
-            .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid {t['accent']}; }}
-            .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.5rem; color: {t['primary']}; }}
-            .client-card p {{ font-size: 0.8rem; color: #777; text-transform: uppercase; letter-spacing: 0.1em; }}
-            div[data-testid="metric-container"] {{ background-color: transparent !important; border: none !important; border-left: 2px solid {t['accent']} !important; padding: 0.5rem 1.5rem; box-shadow: none !important; }}
-            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
-            div[data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; font-weight: 600 !important; color: {t['text']} !important; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }}
-            .stTabs [data-baseweb="tab-list"] {{ gap: 3rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
-            .stTabs [data-baseweb="tab"] {{ height: 4rem; background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }}
+            
+            /* Brand Headers */
+            .brand-header {{ font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.75rem; color: {t['accent']} !important; font-weight: 600; }}
+            
+            /* Refined Buttons */
+            .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
+                background-color: {t['primary']} !important;
+                color: {t['bg']} !important;
+                border: none !important;
+                border-radius: 4px !important;
+                padding: 0.5rem 1rem !important;
+                font-family: '{t['font_body']}', sans-serif !important;
+                font-weight: 600 !important;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                transition: all 0.3s ease;
+            }}
+            .stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {{
+                background-color: {t['accent']} !important;
+                color: #FFFFFF !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+                transform: translateY(-1px);
+            }}
+            
+            /* Client Cards */
+            .client-card {{
+                background-color: #FFFFFF;
+                border: 1px solid #EAEAEA;
+                border-top: 3px solid {t['primary']};
+                border-radius: 6px;
+                padding: 1.5rem;
+                text-align: center;
+                transition: all 0.3s ease;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            }}
+            .client-card:hover {{
+                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                border-top: 3px solid {t['accent']};
+                transform: translateY(-2px);
+            }}
+            .client-card h3 {{ font-size: 1.25rem !important; margin-bottom: 0.25rem !important; color: {t['primary']} !important; font-family: '{t['font_header']}', serif !important; }}
+            .client-card p {{ font-size: 0.75rem !important; color: #666 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0; }}
+            
+            /* Metrics */
+            div[data-testid="metric-container"] {{ border-left: 3px solid {t['accent']} !important; padding-left: 1rem !important; }}
+            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif !important; font-size: 2rem !important; color: {t['primary']} !important; }}
+            div[data-testid="stMetricLabel"] {{ font-family: '{t['font_body']}', sans-serif !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; }}
+            
+            /* Clean Tabs */
+            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
+            .stTabs [data-baseweb="tab"] {{ background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.1em; border-radius: 0; }}
             .stTabs [aria-selected="true"] {{ border-bottom: 2px solid {t['primary']} !important; color: {t['primary']} !important; font-weight: 600; opacity: 1; }}
-            .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {{ background-color: {t['primary']} !important; color: {t['bg']} !important; -webkit-text-fill-color: {t['bg']} !important; border: 1px solid {t['primary']} !important; border-radius: 0px !important; padding: 0.75rem 1.5rem !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.4s; height: auto !important; min-height: 3rem; }}
-            .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; }}
-            [data-testid="stFormSubmitButton"] {{ display: flex; justify-content: center; width: 100%; margin-top: 1.5rem; }}
-            [data-testid="stFormSubmitButton"] > button {{ width: 250px !important; }}
-            .dataframe {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
-            .dataframe th {{ background-color: {t['primary']}; color: {t['bg']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; }}
-            .dataframe td {{ padding: 1rem; border-bottom: 1px solid #EAEAEA; background-color: transparent; color: {t['text']} !important; }}
         </style>
     """, unsafe_allow_html=True)
 render_css()
@@ -98,14 +129,14 @@ def init_db():
                      client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, 
                      client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, 
                      share_token TEXT, payload TEXT)''')
-        
         try:
             c.execute("ALTER TABLE users ADD COLUMN email TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_server TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_port INTEGER")
             c.execute("ALTER TABLE users ADD COLUMN smtp_user TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_pass TEXT")
-        except sqlite3.OperationalError: pass
+        except sqlite3.OperationalError:
+            pass
 
         c.execute("SELECT 1 FROM users WHERE username='admin'")
         if not c.fetchone():
@@ -144,7 +175,6 @@ class DatabaseEngine:
                     c.execute("UPDATE clients SET agent_username=? WHERE agent_username=?", (new_user, old_user))
                 else:
                     c.execute("UPDATE users SET display_name=? WHERE username=?", (new_name, old_user))
-                
                 if new_pwd and new_pwd.strip():
                     c.execute("UPDATE users SET password=? WHERE username=?", (hash_pw(new_pwd), new_user))
                 conn.commit()
@@ -393,7 +423,7 @@ if "token" in query_params:
     public_token = query_params["token"]
     client_public_data = db.get_client_by_token(public_token)
     if client_public_data:
-        st.markdown(f"<div class='brand-header'>{client_public_data.get('brokerage_header', 'PRAXIS TERMINAL')} | EXECUTIVE BRIEF</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{client_public_data.get('brokerage_header', 'PRAXIS TERMINAL')} | EXECUTIVE BRIEF</span></div>", unsafe_allow_html=True)
         st.markdown(f"<h1>{(client_public_data['address'] if client_public_data['address'] else client_public_data['market']).title()}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{client_public_data['name']}</strong> | Strategy: <strong>{client_public_data['type']}</strong></p>", unsafe_allow_html=True)
         st.divider()
@@ -417,14 +447,14 @@ if "token" in query_params:
 # AUTHENTICATED PORTAL ROUTING
 if not st.session_state.logged_in:
     st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='brand-header'>SECURE ACCESS</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>SECURE ACCESS</span></div>", unsafe_allow_html=True)
     st.markdown("<h1>System Login</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
-            user = st.text_input("Username", placeholder="Enter Username", label_visibility="collapsed")
-            pwd = st.text_input("Password", type="password", placeholder="Enter Password", label_visibility="collapsed")
-            if st.form_submit_button("Authenticate"):
+            user = st.text_input("Username", placeholder="Enter Username")
+            pwd = st.text_input("Password", type="password", placeholder="Enter Password")
+            if st.form_submit_button("Authenticate", use_container_width=True):
                 auth = db.authenticate(user, pwd)
                 if auth:
                     st.session_state.update({"logged_in": True, "username": user, **auth, "view_mode": "hub" if auth['role'] == "agent" else "admin"})
@@ -432,8 +462,8 @@ if not st.session_state.logged_in:
                 else: st.error("Invalid credentials.")
 
 elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.session_state.view_mode == "admin":
-    c_hdr1, c_hdr2, c_hdr3 = st.columns([4, 1.5, 1])
-    with c_hdr1: st.markdown(f"<div class='brand-header' style='text-align:left;'>{st.session_state.brokerage} | {st.session_state.role.upper()}</div>", unsafe_allow_html=True)
+    c_hdr1, c_hdr2, c_hdr3 = st.columns([5, 2, 2], vertical_alignment="bottom")
+    with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.brokerage} | {st.session_state.role.upper()}</span>", unsafe_allow_html=True)
     with c_hdr2:
         if st.button("My Personal Hub", use_container_width=True): st.session_state.view_mode = "hub"; st.rerun()
     with c_hdr3:
@@ -442,21 +472,25 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
     st.markdown("<h1>Command Center</h1>", unsafe_allow_html=True)
     st.divider()
     
-    t1, t2, t3 = st.tabs(["Agent Management & Provisioning", "Intelligence Portfolios", "System Theming & Analytics"])
+    t1, t2, t3 = st.tabs(["Agent Management", "Intelligence Portfolios", "System Theming & Analytics"])
     with t1:
         c1, c2 = st.columns([1, 1])
         with c1:
             st.markdown("### Provision Accounts")
             with st.form("new_user"):
-                n_user, n_pwd, n_name = st.text_input("Username"), st.text_input("Password", type="password"), st.text_input("Display Name")
+                n_user = st.text_input("Username")
+                n_pwd = st.text_input("Password", type="password")
+                n_name = st.text_input("Display Name")
                 n_email = st.text_input("Agent Email", placeholder="agent@realbroker.com")
                 if st.session_state.role == "sysadmin":
-                    n_brok, n_team = st.text_input("Brokerage Name", "Real Broker LLC"), st.text_input("Team Name", "Independent")
+                    n_brok = st.text_input("Brokerage Name", "Real Broker LLC")
+                    n_team = st.text_input("Team Name", "Independent")
                     n_role = st.selectbox("Role", ["agent", "team_admin", "broker"])
                 else:
-                    n_brok, n_team = st.session_state.brokerage, (st.session_state.team if st.session_state.role == "team_admin" else st.text_input("Team Name", "Independent"))
+                    n_brok = st.session_state.brokerage
+                    n_team = st.session_state.team if st.session_state.role == "team_admin" else st.text_input("Team Name", "Independent")
                     n_role = st.selectbox("Role", ["agent", "team_admin"]) if st.session_state.role == "broker" else "agent"
-                if st.form_submit_button("Provision Account"):
+                if st.form_submit_button("Provision Account", use_container_width=True):
                     if db.add_user(n_user, n_pwd, n_role, n_brok, n_team, n_name, n_email): st.success("Created.")
                     else: st.error("Username exists.")
         with c2:
@@ -464,7 +498,7 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
             scoped_users = db.get_scoped_users(st.session_state.role, st.session_state.brokerage, st.session_state.team)
             st.dataframe(scoped_users, hide_index=True, use_container_width=True)
 
-        st.divider(); st.markdown("### Modify Existing User Credentials")
+        st.divider(); st.markdown("### Modify Existing Credentials")
         user_list = [u for u in scoped_users['username'].tolist() if u != st.session_state.username]
         if user_list:
             c3, c4 = st.columns([1.5, 1])
@@ -472,9 +506,10 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
                 sel_user = st.selectbox("Select User Account to Modify", user_list)
                 user_row = scoped_users[scoped_users['username'] == sel_user].iloc[0]
                 with st.form("edit_user_form"):
-                    e_username, e_display = st.text_input("Username", value=sel_user), st.text_input("Display Name", value=user_row['display_name'])
+                    e_username = st.text_input("Username", value=sel_user)
+                    e_display = st.text_input("Display Name", value=user_row['display_name'])
                     e_password = st.text_input("Reset Password", placeholder="Leave blank to keep current password", type="password")
-                    if st.form_submit_button("Save Credentials Update"):
+                    if st.form_submit_button("Save Credentials Update", use_container_width=True):
                         if db.update_user_credentials(sel_user, e_username, e_password, e_display): st.success("Updated."); st.rerun()
                         else: st.error("Failed. Username taken.")
             with c4:
@@ -514,33 +549,33 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
 
 elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and st.session_state.view_mode == "hub":
     if st.session_state.role != "agent":
-        c_hdr1, c_hdr2, c_hdr3 = st.columns([4, 1.5, 1])
-        with c_hdr1: st.markdown(f"<div class='brand-header' style='text-align:left;'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
+        c_hdr1, c_hdr2, c_hdr3 = st.columns([5, 2, 2], vertical_alignment="bottom")
+        with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
         with c_hdr2:
             if st.button("Command Center", use_container_width=True): st.session_state.view_mode = "admin"; st.rerun()
         with c_hdr3:
             if st.button("Log Out", key="agent_top_logout", use_container_width=True): logout()
     else:
-        c_hdr1, c_hdr2 = st.columns([5, 1])
-        with c_hdr1: st.markdown(f"<div class='brand-header' style='text-align:left;'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</div>", unsafe_allow_html=True)
+        c_hdr1, c_hdr2 = st.columns([7, 2], vertical_alignment="bottom")
+        with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
         with c_hdr2:
             if st.button("Log Out", key="agent_top_logout", use_container_width=True): logout()
 
     st.markdown("<h1>Client Hub</h1>", unsafe_allow_html=True)
     
     with st.sidebar:
-        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important;'>PRAXIS</h2>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center; color: {st.session_state.theme['accent']} !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 1rem;'>AGENT PROFILE</div>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important; margin-bottom: 0;'>PRAXIS</h2>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: {st.session_state.theme['accent']} !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>AGENT PROFILE</div>", unsafe_allow_html=True)
         
         agent_cfg = db.get_user_email_settings(st.session_state.username)
         with st.expander("Email & Custom SMTP Settings"):
             with st.form("agent_smtp_form"):
                 cfg_email = st.text_input("Contact Email", value=agent_cfg.get("email") or "")
-                cfg_server = st.text_input("Custom SMTP Host", value=agent_cfg.get("smtp_server") or "", placeholder="e.g. smtp.gmail.com")
+                cfg_server = st.text_input("Custom SMTP Host", value=agent_cfg.get("smtp_server") or "", placeholder="smtp.gmail.com")
                 cfg_port = st.number_input("SMTP Port", value=int(agent_cfg.get("smtp_port") or 587))
                 cfg_user = st.text_input("SMTP Username", value=agent_cfg.get("smtp_user") or "")
                 cfg_pass = st.text_input("SMTP Password", value=agent_cfg.get("smtp_pass") or "", type="password")
-                if st.form_submit_button("Save Email Settings"):
+                if st.form_submit_button("Save Email Settings", use_container_width=True):
                     db.update_agent_email_settings(st.session_state.username, cfg_email, cfg_server, cfg_port, cfg_user, cfg_pass)
                     st.session_state.email = cfg_email; st.success("Updated."); st.rerun()
 
@@ -549,31 +584,30 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
         if st.button("+ New Client", use_container_width=True): st.session_state.update({"temp_client": {}, "wizard_step": 1, "view_mode": "wizard"}); st.rerun()
         st.divider(); st.markdown("<h3 style='text-align: center;'>ACTIVE PORTFOLIOS</h3>", unsafe_allow_html=True)
         
-        # Uses standard "agent" role fetch to ONLY pull their personally created files
         clients = db.get_scoped_clients("agent", st.session_state.username, None, None)
         if not clients: st.info("No active clients.")
         else:
             for c in clients:
                 st.markdown(f"<div class='client-card'><h3>{c['data']['name']}</h3><p>{c['data']['market']} | {c['data']['type']}</p></div>", unsafe_allow_html=True)
-                if st.button(f"Load {c['data']['name']} ➔", key=f"ld_{c['client_id']}", use_container_width=True):
+                if st.button(f"Load Dashboard ➔", key=f"ld_{c['client_id']}", use_container_width=True):
                     st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox", "return_to": "hub"}); st.rerun()
 
 elif st.session_state.view_mode == "wizard":
     st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</span></div>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         if st.session_state.wizard_step == 1:
             st.markdown("<h1>Client Name</h1>", unsafe_allow_html=True)
             with st.form("w1"):
-                val = st.text_input("Name", label_visibility="collapsed")
-                if st.form_submit_button("Next") and val.strip():
+                val = st.text_input("Name", placeholder="e.g. John Doe", label_visibility="collapsed")
+                if st.form_submit_button("Next", use_container_width=True) and val.strip():
                     st.session_state.temp_client['name'] = val.title().strip(); st.session_state.wizard_step = 2; st.rerun()
         elif st.session_state.wizard_step == 2:
             st.markdown("<h1>Market Area</h1>", unsafe_allow_html=True)
             with st.form("w2"):
-                val = st.text_input("Market", label_visibility="collapsed")
-                if st.form_submit_button("Next"):
+                val = st.text_input("Market", placeholder="e.g. Dallas", label_visibility="collapsed")
+                if st.form_submit_button("Next", use_container_width=True):
                     cln = engine.validate_market(val)
                     if cln: st.session_state.temp_client['market'] = cln; st.session_state.wizard_step = 3; st.rerun()
                     else: st.error("⚠️ Data Feed Error: No coverage.")
@@ -581,14 +615,14 @@ elif st.session_state.view_mode == "wizard":
             st.markdown("<h1>Price Point</h1>", unsafe_allow_html=True)
             with st.form("w3"):
                 val = st.text_input("Price", value=f"${engine.get_market_metrics(st.session_state.temp_client['market'])['price']:,}", label_visibility="collapsed")
-                if st.form_submit_button("Next"):
+                if st.form_submit_button("Next", use_container_width=True):
                     cln = re.sub(r'[^\d.]', '', val)
                     if cln: st.session_state.temp_client['price'] = int(float(cln)); st.session_state.wizard_step = 4; st.rerun()
         elif st.session_state.wizard_step == 4:
             st.markdown("<h1>Specific Target Property?</h1>", unsafe_allow_html=True)
             with st.form("w4"):
                 val = st.text_input("Addr", placeholder="(Optional)", label_visibility="collapsed")
-                if st.form_submit_button("Next / Skip"): st.session_state.temp_client['address'] = val.strip(); st.session_state.wizard_step = 5; st.rerun()
+                if st.form_submit_button("Next / Skip", use_container_width=True): st.session_state.temp_client['address'] = val.strip(); st.session_state.wizard_step = 5; st.rerun()
         elif st.session_state.wizard_step == 5:
             st.markdown("<h1>Strategic Focus</h1>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
@@ -606,21 +640,21 @@ elif st.session_state.view_mode == "sandbox":
     mi = engine.get_market_metrics(cd['market'])
     
     with st.sidebar:
-        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important;'>PRAXIS</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='text-align: center; color:{st.session_state.theme['primary']} !important; margin-bottom: 0;'>PRAXIS</h2>", unsafe_allow_html=True)
         if st.button("⬅ Return", use_container_width=True): 
             st.session_state.view_mode = st.session_state.get("return_to", "hub")
             st.rerun()
             
         st.divider()
-        if st.radio("UI", ["Light", "Dark"], index=0 if st.session_state.theme['bg'] == '#FBFBF9' else 1, horizontal=True) == "Dark" and st.session_state.theme['bg'] != '#121212':
+        if st.radio("UI Mode", ["Light", "Dark"], index=0 if st.session_state.theme['bg'] == '#FBFBF9' else 1, horizontal=True) == "Dark" and st.session_state.theme['bg'] != '#121212':
             st.session_state.theme = THEME_DARK; st.rerun()
         elif st.session_state.theme['bg'] != '#FBFBF9' and st.session_state.theme['bg'] != '#121212': pass
         elif st.session_state.theme['bg'] == '#121212': st.session_state.theme = THEME_LIGHT; st.rerun()
             
-        st.divider(); st.markdown("### Overrides")
-        nt = st.selectbox("Mode", ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"], index=["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"].index(cd['type']))
-        np = st.number_input("Price ($)", value=cd['price'], step=10000)
-        nr = st.number_input("Rate (%)", value=cd['base_rate'], step=0.125)
+        st.divider(); st.markdown("### Model Overrides")
+        nt = st.selectbox("Strategy Mode", ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"], index=["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"].index(cd['type']))
+        np = st.number_input("Target Price ($)", value=cd['price'], step=10000)
+        nr = st.number_input("Base Rate (%)", value=cd['base_rate'], step=0.125)
         nx = st.number_input("Tax Rate (%)", value=cd.get('tax_rate_override', 2.2), step=0.1)
         nh = st.number_input("HOA ($/mo)", value=cd.get('hoa_override', 0), step=10)
         
@@ -631,7 +665,7 @@ elif st.session_state.view_mode == "sandbox":
         st.divider()
         if st.button("Log Out", key="sandbox_sidebar_logout", use_container_width=True): logout()
 
-    st.markdown(f"<div class='brand-header'>{st.session_state.display_name.upper()}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center; margin-bottom: 1rem;'><span class='brand-header'>{st.session_state.display_name.upper()}</span></div>", unsafe_allow_html=True)
     st.markdown(f"<h1>{(cd['address'] if cd['address'] else cd['market']).title()}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{cd['name']}</strong> | Strategy: <strong>{cd['type']}</strong></p>", unsafe_allow_html=True)
     
@@ -659,7 +693,7 @@ elif st.session_state.view_mode == "sandbox":
                     db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
             if cd.get('saved_brief'):
                 st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
-                st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf")
+                st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf", use_container_width=True)
 
     with t2:
         col_dp, col_conc = st.columns(2)
@@ -700,7 +734,7 @@ elif st.session_state.view_mode == "sandbox":
         st.markdown("### Email Advisory Brief Directly")
         with st.form("email_delivery_form"):
             recipient = st.text_input("Client Email Address", placeholder="client@example.com")
-            if st.form_submit_button("Send PDF & Portal Link via Email"):
+            if st.form_submit_button("Send PDF & Portal Link via Email", use_container_width=True):
                 if recipient and cd.get('saved_brief'):
                     pdf_bytes = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'])
                     with st.spinner("Dispatching email..."):
