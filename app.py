@@ -6,6 +6,10 @@ import sqlite3
 import hashlib
 import json
 import uuid
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from datetime import datetime
 from google import genai
 from fpdf import FPDF
@@ -18,7 +22,19 @@ THEME_LIGHT = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text
 THEME_DARK = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "text": "#EAEAEA", "font_header": "Playfair Display", "font_body": "Montserrat"}
 
 def init_state():
-    defaults = {"theme": THEME_LIGHT, "logged_in": False, "username": None, "role": None, "brokerage": None, "team": None, "display_name": None, "view_mode": "login", "wizard_step": 1, "temp_client": {}, "active_client_id": None}
+    defaults = {
+        "theme": THEME_LIGHT, 
+        "logged_in": False, 
+        "username": None, 
+        "role": None, 
+        "brokerage": None, 
+        "team": None, 
+        "display_name": None, 
+        "view_mode": "login", 
+        "wizard_step": 1, 
+        "temp_client": {}, 
+        "active_client_id": None
+    }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
 init_state()
@@ -70,7 +86,7 @@ def init_db():
     with get_conn() as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, payload TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, share_token TEXT, payload TEXT)''')
         c.execute("SELECT 1 FROM users WHERE username='admin'")
         if not c.fetchone():
             c.execute("INSERT INTO users (username, password, role, brokerage, team, display_name, login_count) VALUES (?, ?, ?, ?, ?, ?, ?)", ("admin", hash_pw("praxis2026"), "sysadmin", "GLOBAL", "GLOBAL", "System Administrator", 0))
@@ -127,8 +143,11 @@ class DatabaseEngine:
 
     def save_client(self, cid, user, brokerage, team, data):
         data['agent_owner'] = user
+        if 'share_token' not in data or not data['share_token']:
+            data['share_token'] = str(uuid.uuid4())[:8]
         with get_conn() as conn:
-            conn.execute("INSERT OR REPLACE INTO clients (client_id, agent_username, brokerage, team, client_name, market, target_price, address, report_type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (cid, user, brokerage, team, data['name'], data['market'], data['price'], data['address'], data['type'], json.dumps(data)))
+            conn.execute("INSERT OR REPLACE INTO clients (client_id, agent_username, brokerage, team, client_name, market, target_price, address, report_type, share_token, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                         (cid, user, brokerage, team, data['name'], data['market'], data['price'], data['address'], data['type'], data['share_token'], json.dumps(data)))
             conn.commit()
 
     def get_scoped_clients(self, role, user, brokerage, team):
@@ -146,11 +165,73 @@ class DatabaseEngine:
             c.execute("SELECT payload FROM clients WHERE client_id=?", (cid,))
             row = c.fetchone()
             return json.loads(row[0]) if row else None
+
+    def get_client_by_token(self, token):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT payload, brokerage FROM clients WHERE share_token=?", (token,))
+            row = c.fetchone()
+            if row:
+                d = json.loads(row[0])
+                d['brokerage_header'] = row[1]
+                return d
+            return None
             
     def get_telemetry(self):
         with get_conn() as conn: return pd.read_sql_query("SELECT * FROM users", conn), pd.read_sql_query("SELECT * FROM clients", conn)
 
 db = DatabaseEngine()
+
+# --- SMTP EMAIL ENGINE ---
+def send_report_email(recipient_email, client_name, agent_display_name, brokerage, share_link, pdf_bytes):
+    smtp_server = st.secrets.get("SMTP_SERVER", None)
+    smtp_port = st.secrets.get("SMTP_PORT", 587)
+    smtp_user = st.secrets.get("SMTP_USERNAME", None)
+    smtp_pass = st.secrets.get("SMTP_PASSWORD", None)
+
+    if not all([smtp_server, smtp_user, smtp_pass]):
+        return False, "SMTP server secrets are not configured in secrets.toml."
+
+    msg = MIMEMultipart()
+    msg['From'] = f"{agent_display_name} <{smtp_user}>"
+    msg['To'] = recipient_email
+    msg['Subject'] = f"Executive Advisory Brief | {client_name}"
+
+    html_body = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #1A1A1A; line-height: 1.6;">
+        <div style="background-color: #0F251A; padding: 20px; text-align: center; color: #C5A059;">
+            <h2 style="margin: 0; font-family: Georgia, serif;">{brokerage.upper()}</h2>
+            <p style="margin: 5px 0 0 0; font-size: 12px; letter-spacing: 2px;">REAL ESTATE ADVISORY</p>
+        </div>
+        <div style="padding: 30px; background-color: #FBFBF9;">
+            <p>Dear {client_name},</p>
+            <p>Your customized real estate strategy brief and market analysis is complete.</p>
+            <p>You may download the attached PDF or access your interactive portal using the link below:</p>
+            <p style="text-align: center; margin: 30px 0;">
+                <a href="{share_link}" style="background-color: #0F251A; color: #FBFBF9; padding: 12px 25px; text-decoration: none; font-weight: bold;">VIEW INTERACTIVE PORTAL</a>
+            </p>
+            <p>Best regards,<br><strong>{agent_display_name}</strong><br>{brokerage}</p>
+        </div>
+      </body>
+    </html>
+    """
+    msg.attach(MIMEText(html_body, 'html'))
+
+    # Attach PDF
+    pdf_attachment = MIMEApplication(pdf_bytes, _subtype="pdf")
+    pdf_attachment.add_header('Content-Disposition', 'attachment', filename=f"Praxis_{client_name.replace(' ', '_')}.pdf")
+    msg.attach(pdf_attachment)
+
+    try:
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        return True, "Email successfully dispatched."
+    except Exception as e:
+        return False, f"SMTP Delivery Error: {e}"
 
 # --- MARKET DATA ENGINE ---
 class MarketDataEngine:
@@ -187,57 +268,34 @@ class PraxisPDF(FPDF):
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 def generate_pdf(client_name, market, address, text):
-    pdf = PraxisPDF()
-    pdf.add_page()
-    pdf.set_font('Helvetica', '', 10)
-    pdf.set_text_color(30, 30, 30)
-
-    # Executive Metadata Box
-    pdf.set_fill_color(245, 245, 240)
-    pdf.rect(10, 25, 190, 28, 'F')
+    pdf = PraxisPDF(); pdf.add_page(); pdf.set_font('Helvetica', '', 10); pdf.set_text_color(30, 30, 30)
+    pdf.set_fill_color(245, 245, 240); pdf.rect(10, 25, 190, 28, 'F')
     
-    pdf.set_xy(14, 28)
-    pdf.set_font('Helvetica', 'B', 10)
-    pdf.set_text_color(15, 37, 26)
+    pdf.set_xy(14, 28); pdf.set_font('Helvetica', 'B', 10); pdf.set_text_color(15, 37, 26)
     pdf.cell(90, 6, f"PREPARED FOR: {sanitize_pdf(client_name).upper()}", 0, 0)
     pdf.cell(90, 6, f"LOCATION: {sanitize_pdf(address if address else market).upper()}", 0, 1)
     
-    pdf.set_x(14)
-    pdf.set_font('Helvetica', '', 9)
-    pdf.set_text_color(100, 100, 100)
+    pdf.set_x(14); pdf.set_font('Helvetica', '', 9); pdf.set_text_color(100, 100, 100)
     pdf.cell(90, 6, f"DATE: {datetime.now().strftime('%B %d, %Y').upper()}", 0, 0)
     pdf.cell(90, 6, f"CLASSIFICATION: CONFIDENTIAL ADVISORY", 0, 1)
-    
     pdf.ln(12)
 
-    # Body Content Parsing
     clean_text = sanitize_pdf(text)
     for line in clean_text.split('\n'):
         line_str = line.strip()
-        if not line_str:
-            pdf.ln(3)
+        if not line_str: pdf.ln(3)
         elif line_str.startswith('##'):
-            pdf.ln(4)
-            pdf.set_font('Helvetica', 'B', 12)
-            pdf.set_text_color(15, 37, 26)
+            pdf.ln(4); pdf.set_font('Helvetica', 'B', 12); pdf.set_text_color(15, 37, 26)
             pdf.cell(0, 8, line_str.replace('#', '').strip().upper(), 0, 1)
-            pdf.set_draw_color(197, 160, 89)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(4)
-            pdf.set_font('Helvetica', '', 10)
-            pdf.set_text_color(40, 40, 40)
+            pdf.set_draw_color(197, 160, 89); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(4)
+            pdf.set_font('Helvetica', '', 10); pdf.set_text_color(40, 40, 40)
         elif line_str.startswith('*') or line_str.startswith('-'):
-            pdf.set_font('Helvetica', '', 10)
-            pdf.set_text_color(40, 40, 40)
+            pdf.set_font('Helvetica', '', 10); pdf.set_text_color(40, 40, 40)
             clean_bullet = line_str.lstrip('*- ').replace('**', '')
-            pdf.multi_cell(0, 5, f"   * {clean_bullet}")
-            pdf.ln(2)
+            pdf.multi_cell(0, 5, f"   * {clean_bullet}"); pdf.ln(2)
         else:
-            pdf.set_font('Helvetica', '', 10)
-            pdf.set_text_color(40, 40, 40)
-            clean_prose = line_str.replace('**', '')
-            pdf.multi_cell(0, 5, clean_prose)
-            pdf.ln(2)
+            pdf.set_font('Helvetica', '', 10); pdf.set_text_color(40, 40, 40)
+            pdf.multi_cell(0, 5, line_str.replace('**', '')); pdf.ln(2)
 
     return pdf.output(dest='S').encode('latin-1')
 
@@ -287,8 +345,42 @@ def clean_json_res(raw_text):
     return raw_text.replace("```json", "").replace("```", "").strip()
 
 # ====================================================================
-# VIEWS ROUTER
+# VIEWS ROUTER & TOKEN CHECK
 # ====================================================================
+
+# PUBLIC READ-ONLY TOKEN ROUTING
+query_params = st.query_params
+if "token" in query_params:
+    public_token = query_params["token"]
+    client_public_data = db.get_client_by_token(public_token)
+    
+    if client_public_data:
+        st.markdown(f"<div class='brand-header'>{client_public_data.get('brokerage_header', 'PRAXIS TERMINAL')} | EXECUTIVE BRIEF</div>", unsafe_allow_html=True)
+        st.markdown(f"<h1>{(client_public_data['address'] if client_public_data['address'] else client_public_data['market']).title()}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{client_public_data['name']}</strong> | Strategy: <strong>{client_public_data['type']}</strong></p>", unsafe_allow_html=True)
+        st.divider()
+        
+        mi = engine.get_market_metrics(client_public_data['market'])
+        b1, b2, b3, b4 = st.columns(4)
+        b1.metric("Asset Value", f"${client_public_data['price']:,}")
+        b2.metric("Tax Rate", f"{client_public_data.get('tax_rate_override', 2.2):.2f}%")
+        b3.metric("Monthly HOA", f"${client_public_data.get('hoa_override', 0):,.0f}")
+        b4.metric("Velocity", f"{mi['dom']} Days")
+        st.divider()
+
+        st.markdown("### Strategy Memo")
+        if client_public_data.get('saved_brief'):
+            st.markdown(f"<div style='border-top: 2px solid #0F251A; padding-top:1rem;'>{client_public_data['saved_brief']}</div>", unsafe_allow_html=True)
+            pdf_b = generate_pdf(client_public_data['name'], client_public_data['market'], client_public_data['address'], client_public_data['saved_brief'])
+            st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf")
+        else:
+            st.info("The advisory memo for this portfolio is currently being authored.")
+        st.stop()
+    else:
+        st.error("Invalid or expired share token.")
+        st.stop()
+
+# AUTHENTICATED PORTAL ROUTING
 if not st.session_state.logged_in:
     st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
     st.markdown("<div class='brand-header'>SECURE ACCESS</div>", unsafe_allow_html=True)
@@ -455,7 +547,7 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard"
             for col, lbl, typ in zip([c1, c2, c3], ["Buyer Advisory", "Seller Strategy", "Investor Memo"], ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"]):
                 with col:
                     if st.button(lbl, use_container_width=True): 
-                        st.session_state.temp_client.update({'type': typ, 'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': ""})
+                        st.session_state.temp_client.update({'type': typ, 'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': "", 'share_token': str(uuid.uuid4())[:8]})
                         cid = str(uuid.uuid4()); db.save_client(cid, st.session_state.username, st.session_state.brokerage, st.session_state.team, st.session_state.temp_client)
                         st.session_state.update({"active_client_id": cid, "view_mode": "sandbox"}); st.rerun()
 
@@ -496,7 +588,8 @@ elif st.session_state.view_mode == "sandbox":
 
     f_scr = min(round((calc_mortgage(cd['price'], cd['base_rate'], 20) * 12 / mi['income']) * 20, 1), 10.0)
 
-    t1, t2, t3 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix"])
+    t1, t2, t3, t4 = st.tabs(["Strategy Brief", "Deal Stack Optimizer", "Capital Matrix", "Lead Distribution"])
+    
     with t1:
         c1, c2 = st.columns([1, 1.5])
         with c1:
@@ -524,6 +617,7 @@ elif st.session_state.view_mode == "sandbox":
             if cd.get('saved_brief'):
                 st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
                 st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf")
+
     with t2:
         col_dp, col_conc = st.columns(2)
         with col_dp: dp = st.slider("Down Payment (%)", 0, 100, 20, step=5)
@@ -544,8 +638,40 @@ elif st.session_state.view_mode == "sandbox":
         s1, s2, s3 = st.columns(3)
         s1.metric("Optimized Monthly", f"${np+tm+im+hm:,.2f}", f"-${(bp+tm+im+hm) - (np+tm+im+hm):,.2f}", "inverse")
         s2.metric("Effective Rate", f"{max(er, 1.0):.3f}%"); s3.metric("Cash to Close", f"${(ep*(dp/100))+(ep*0.03):,.0f}")
+
     with t3:
         r1, r2, r3 = st.columns(3)
         r1.metric("Absorption Rate", f"{round((mi['inventory'] / (mi['inventory']/3)), 1)} Months")
         r2.metric("Fall-Through", "14.2%", "Risk Factor", "inverse")
         r3.metric("List-to-Sale", "-2.4%")
+
+    with t4:
+        st.markdown("### Client Delivery & Tokenized Share")
+        base_app_url = st.secrets.get("BASE_URL", "https://your-app.streamlit.app")
+        token = cd.get("share_token", "default")
+        share_url = f"{base_app_url}/?token={token}"
+        
+        st.text_input("Read-Only Client Access URL", value=share_url)
+        st.divider()
+        
+        st.markdown("### Email Advisory Brief Directly")
+        with st.form("email_delivery_form"):
+            recipient = st.text_input("Client Email Address", placeholder="client@example.com")
+            if st.form_submit_button("Send PDF & Portal Link via Email"):
+                if recipient and cd.get('saved_brief'):
+                    pdf_bytes = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'])
+                    with st.spinner("Dispatching email..."):
+                        ok, status_msg = send_report_email(
+                            recipient_email=recipient,
+                            client_name=cd['name'],
+                            agent_display_name=st.session_state.display_name,
+                            brokerage=st.session_state.brokerage,
+                            share_link=share_url,
+                            pdf_bytes=pdf_bytes
+                        )
+                        if ok: st.success(status_msg)
+                        else: st.error(status_msg)
+                elif not cd.get('saved_brief'):
+                    st.error("Please generate the Executive Brief in Tab 1 before sending.")
+                else:
+                    st.error("Please enter a valid email address.")
