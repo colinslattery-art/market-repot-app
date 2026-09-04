@@ -77,7 +77,6 @@ def get_live_rate():
 live_rate = get_live_rate()
 
 # --- STRICT DATA GOVERNANCE (MASTER DICTIONARY) ---
-# The system will ONLY allow markets present in this dataset. No guessing.
 local_market_data = {
     "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
     "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
@@ -85,6 +84,8 @@ local_market_data = {
     "Frisco": {"income": 145000, "price": 710000, "dom": 39, "inventory": 620},
     "Plano": {"income": 105000, "price": 540000, "dom": 31, "inventory": 480},
     "McKinney": {"income": 102000, "price": 525000, "dom": 33, "inventory": 510},
+    "Richardson": {"income": 95000, "price": 465000, "dom": 32, "inventory": 180},
+    "Garland": {"income": 76000, "price": 345000, "dom": 38, "inventory": 310},
     "Fort Worth": {"income": 72000, "price": 345000, "dom": 42, "inventory": 2100},
     "Dallas": {"income": 63000, "price": 435000, "dom": 44, "inventory": 3400},
     "Tyler": {"income": 61000, "price": 315000, "dom": 52, "inventory": 450},
@@ -145,7 +146,7 @@ if "wizard_step" not in st.session_state:
     st.session_state.custom_market_data = None
 
 # ====================================================================
-# PHASE 1: CONVERSATIONAL AI WIZARD (WITH STRICT VALIDATION)
+# PHASE 1: CONVERSATIONAL AI WIZARD 
 # ====================================================================
 if st.session_state.wizard_step <= 4:
     st.markdown("<h1 style='text-align: center; margin-top: 2rem; font-size: 3rem;'>The Praxis Report</h1>", unsafe_allow_html=True)
@@ -162,27 +163,27 @@ if st.session_state.wizard_step <= 4:
         with st.chat_message("assistant"):
             if st.session_state.wizard_step == 1:
                 st.session_state.client_name = prompt.title()
-                reply = f"Excellent. Preparing report for **{st.session_state.client_name}**. Which Texas sub-market are we analyzing today? (e.g., Lindale, Tyler, Frisco)"
+                reply = f"Excellent. Preparing report for **{st.session_state.client_name}**. Which Texas sub-market are we analyzing today? (e.g., Lindale, Tyler, Dallas)"
                 st.markdown(reply)
                 st.session_state.messages.append({"role": "assistant", "content": reply})
                 st.session_state.wizard_step = 2
                 st.rerun()
                 
             elif st.session_state.wizard_step == 2:
-                market = prompt.title().strip()
+                # CLEAN INPUT: Removes ", TX", ", Tx", and trailing spaces
+                market_clean = prompt.title().split(',')[0].strip()
                 
                 # STRICT VALIDATION GATE
-                if market in local_market_data:
-                    st.session_state.target_market = market
-                    st.session_state.custom_market_data = local_market_data[market]
+                if market_clean in local_market_data:
+                    st.session_state.target_market = market_clean
+                    st.session_state.custom_market_data = local_market_data[market_clean]
                     
-                    reply = f"Targeting **{market}**. Data feed verified. What is their target purchase price or estimated listing value? (Numbers only, e.g., 350000)"
+                    reply = f"Targeting **{market_clean}**. Data feed verified. What is their target purchase price or estimated listing value? (Numbers only, e.g., 350000)"
                     st.markdown(reply)
                     st.session_state.messages.append({"role": "assistant", "content": reply})
                     st.session_state.wizard_step = 3
                 else:
-                    # REJECTION PROTOCOL - Do not increment step
-                    reply = f"⚠️ **Data Feed Error:** We do not have active coverage or verified MLS data for '{market}'. Please enter a market currently in our system (e.g., Lindale, Tyler, Dallas, Fort Worth)."
+                    reply = f"⚠️ **Data Feed Error:** We do not have active coverage or verified MLS data for '{market_clean}'. Please enter a market currently in our system (e.g., Lindale, Richardson, Dallas, Fort Worth)."
                     st.markdown(reply)
                     st.session_state.messages.append({"role": "assistant", "content": reply})
                 
@@ -324,7 +325,7 @@ if st.session_state.wizard_step == 5:
         s3.metric("Cash to Close (Est.)", f"${(eff_price * (dp_pct/100)) + (eff_price * 0.03):,.0f}")
 
     with tab3:
-        st.markdown("### Market Risk & Capital Matrix")
+        st.markdown("### Market Capital Matrix")
         st.write(f"Evaluating liquidity for {sub_market}.")
         r1, r2, r3 = st.columns(3)
         r1.metric("Absorption Rate", f"{round((market_info['inventory'] / (market_info['inventory']/3)), 1)} Months")
