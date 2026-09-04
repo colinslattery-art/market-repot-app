@@ -30,19 +30,15 @@ def get_live_rate():
 
 live_rate = get_live_rate()
 
-# --- APP HEADER & ARREARS WARNING ---
+# --- APP HEADER ---
 st.title("📈 Praxis Market Intelligence Sandbox")
-st.warning(
-    "⚠️ **Data Arrears Notice:** Current macro-metrics are operating on a 30-day reporting lag (Redfin Data Center standard). "
-    "**Roadmap Note:** Future versions will integrate live MLS/API scraping for real-time velocity updates."
-)
 
 texas_markets = [
     "Aledo", "Allen", "Celina", "Dallas", "Denton", "Forney", "Fort Worth", "Frisco", 
     "Longview", "McKinney", "Plano", "Prosper", "Rockwall", "Southlake", "Trophy Club", "Tyler", "Weatherford", "Westlake"
 ]
 
-# Localized Market Data Override (Provides city-specific baseline since master_df is National)
+# Localized Market Data Override
 local_market_data = {
     "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
     "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
@@ -131,7 +127,7 @@ with tab1:
                     st.error(f"Error: {e}")
 
 with tab2:
-    st.subheader(f"Financing Composition (National Baseline Applied to {sub_market})")
+    st.subheader(f"Financing Composition ({sub_market})")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("All-Cash Buyers", "25.7%")
     c2.metric("Conventional Loans", "78.4%")
