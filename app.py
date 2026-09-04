@@ -8,6 +8,9 @@ import hashlib
 import json
 import uuid
 import smtplib
+import base64
+import tempfile
+import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -54,14 +57,11 @@ def render_css():
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
-            
-            /* Global Ticker */
             .ticker-wrap {{ width: 100%; overflow: hidden; background-color: #0F251A; color: #C5A059; padding: 10px 0; font-size: 0.8rem; font-family: 'Montserrat', sans-serif; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; white-space: nowrap; border-bottom: 2px solid #C5A059; margin-bottom: 1.5rem; margin-top: -2rem; }}
             .ticker-move {{ display: inline-block; padding-left: 100%; animation: ticker 40s linear infinite; }}
             .ticker-item {{ padding: 0 2rem; }}
             @keyframes ticker {{ 0% {{ transform: translate(0, 0); }} 100% {{ transform: translate(-100%, 0); }} }}
             
-            /* Global Colors */
             .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             p, label, li, td, th, div[data-baseweb="base-input"], .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
@@ -131,6 +131,7 @@ def init_db():
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT, brokerage TEXT, team TEXT, display_name TEXT, login_count INTEGER DEFAULT 0, last_login TEXT, email TEXT, smtp_server TEXT, smtp_port INTEGER, smtp_user TEXT, smtp_pass TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, share_token TEXT, client_email TEXT, payload TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS brokerage_settings (brokerage TEXT PRIMARY KEY, logo_base64 TEXT)''')
         try:
             c.execute("ALTER TABLE users ADD COLUMN email TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_server TEXT")
@@ -188,6 +189,19 @@ class DatabaseEngine:
             res = c.fetchone()
             if res: return {"display_name": res[0], "email": res[1], "brokerage": res[2], "smtp_server": res[3], "smtp_port": res[4], "smtp_user": res[5], "smtp_pass": res[6]}
             return {}
+    def save_brokerage_logo(self, brokerage, base64_str):
+        with get_conn() as conn:
+            if base64_str:
+                conn.execute("INSERT OR REPLACE INTO brokerage_settings (brokerage, logo_base64) VALUES (?, ?)", (brokerage, base64_str))
+            else:
+                conn.execute("DELETE FROM brokerage_settings WHERE brokerage=?", (brokerage,))
+            conn.commit()
+    def get_brokerage_logo(self, brokerage):
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT logo_base64 FROM brokerage_settings WHERE brokerage=?", (brokerage,))
+            res = c.fetchone()
+            return res[0] if res else None
     def delete_user(self, user):
         with get_conn() as conn:
             conn.execute("DELETE FROM users WHERE username=?", (user.lower(),))
@@ -323,6 +337,9 @@ def send_report_email(agent_username, recipient_email, client_name, share_link, 
     agent_email = agent_info.get("email", None)
     brokerage = agent_info.get("brokerage", "PRAXIS TERMINAL")
 
+    logo_b64 = db.get_brokerage_logo(brokerage)
+    brand_html = f'<img src="data:image/png;base64,{logo_b64}" style="max-height: 50px;"><p style="margin: 5px 0 0 0; font-size: 12px; letter-spacing: 2px;">REAL ESTATE ADVISORY</p>' if logo_b64 else f'<h2 style="margin: 0; font-family: Georgia, serif;">{brokerage.upper()}</h2><p style="margin: 5px 0 0 0; font-size: 12px; letter-spacing: 2px;">REAL ESTATE ADVISORY</p>'
+
     if agent_info.get("smtp_server") and agent_info.get("smtp_user") and agent_info.get("smtp_pass"):
         smtp_server, smtp_port = agent_info["smtp_server"], agent_info.get("smtp_port") or 587
         smtp_user, smtp_pass = agent_info["smtp_user"], agent_info["smtp_pass"]
@@ -355,8 +372,7 @@ def send_report_email(agent_username, recipient_email, client_name, share_link, 
     html_body = f"""
     <html><body style="font-family: Arial, sans-serif; color: #1A1A1A; line-height: 1.6;">
         <div style="background-color: #0F251A; padding: 20px; text-align: center; color: #C5A059;">
-            <h2 style="margin: 0; font-family: Georgia, serif;">{brokerage.upper()}</h2>
-            <p style="margin: 5px 0 0 0; font-size: 12px; letter-spacing: 2px;">REAL ESTATE ADVISORY</p>
+            {brand_html}
         </div>
         <div style="padding: 30px; background-color: #FBFBF9;">
             <p>Dear {client_name},</p>
@@ -382,21 +398,40 @@ def send_report_email(agent_username, recipient_email, client_name, share_link, 
     except Exception as e: return False, f"SMTP Delivery Error: {e}"
 
 # --- PDF & AI LOGIC ---
-def sanitize_pdf(text):
-    for k, v in {'“':'"', '”':'"', '‘':"'", '’':"'", '—':'--', '–':'-', '…':'...'}.items(): text = text.replace(k, v)
-    return text.encode('latin-1', 'ignore').decode('latin-1')
-
 class PraxisPDF(FPDF):
+    def __init__(self, brokerage, logo_path=None):
+        super().__init__()
+        self.brokerage = brokerage
+        self.logo_path = logo_path
+
     def header(self):
-        self.set_font('Helvetica', 'B', 10); self.set_text_color(15, 37, 26) 
-        self.cell(0, 10, f"INTELLIGENCE REPORT | {st.session_state.get('brokerage', 'PRAXIS').upper()}", 0, 1, 'R')
-        self.set_draw_color(197, 160, 89); self.line(10, 20, 200, 20); self.ln(10)
+        if self.logo_path:
+            self.image(self.logo_path, 10, 8, h=10)
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(15, 37, 26) 
+            self.cell(0, 10, f"INTELLIGENCE REPORT", 0, 1, 'R')
+        else:
+            self.set_font('Helvetica', 'B', 10)
+            self.set_text_color(15, 37, 26) 
+            self.cell(0, 10, f"INTELLIGENCE REPORT | {self.brokerage.upper()}", 0, 1, 'R')
+        
+        self.set_draw_color(197, 160, 89)
+        self.line(10, 20, 200, 20)
+        self.ln(10)
+
     def footer(self):
         self.set_y(-15); self.set_font('Helvetica', 'I', 8); self.set_text_color(150, 150, 150)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def generate_pdf(client_name, market, address, text):
-    pdf = PraxisPDF(); pdf.add_page(); pdf.set_font('Helvetica', '', 10); pdf.set_text_color(30, 30, 30)
+def generate_pdf(client_name, market, address, text, brokerage, logo_b64=None):
+    tmp_path = None
+    if logo_b64:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(base64.b64decode(logo_b64))
+            tmp_path = tmp.name
+
+    pdf = PraxisPDF(brokerage, tmp_path)
+    pdf.add_page(); pdf.set_font('Helvetica', '', 10); pdf.set_text_color(30, 30, 30)
     pdf.set_fill_color(245, 245, 240); pdf.rect(10, 25, 190, 28, 'F')
     
     pdf.set_xy(14, 28); pdf.set_font('Helvetica', 'B', 10); pdf.set_text_color(15, 37, 26)
@@ -425,7 +460,9 @@ def generate_pdf(client_name, market, address, text):
             pdf.set_font('Helvetica', '', 10); pdf.set_text_color(40, 40, 40)
             pdf.multi_cell(0, 5, line_str.replace('**', '')); pdf.ln(2)
 
-    return pdf.output(dest='S').encode('latin-1')
+    out_bytes = pdf.output(dest='S').encode('latin-1')
+    if tmp_path and os.path.exists(tmp_path): os.unlink(tmp_path)
+    return out_bytes
 
 def generate_strategy_memo(agent_name, client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
     if not client: return "⚠️ API Key Missing."
@@ -500,7 +537,7 @@ def render_market_intelligence():
         c_low = '#FCE8E8' if not invert_colors else '#E5F0EA'
         fig = go.Figure(go.Indicator(
             mode="gauge+number", 
-            value=float(val), # Explicit float casting to prevent Plotly rendering breaks
+            value=float(val), 
             title={'text': title, 'font': {'color': t['text'], 'size': 14}},
             gauge={
                 'axis': {'range': [0, max_val], 'tickfont': {'color': t['text']}}, 
@@ -513,7 +550,6 @@ def render_market_intelligence():
                 ]
             }
         ))
-        # Increased height and adjusted margins to ensure dials render fully
         fig.update_layout(height=260, margin=dict(l=30, r=30, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         return fig
 
@@ -546,7 +582,13 @@ if "token" in query_params:
     public_token = query_params["token"]
     client_public_data = db.get_client_by_token(public_token)
     if client_public_data:
-        st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{client_public_data.get('brokerage_header', 'PRAXIS TERMINAL')} | EXECUTIVE BRIEF</span></div>", unsafe_allow_html=True)
+        b_name = client_public_data.get('brokerage_header', 'PRAXIS TERMINAL')
+        logo_b64 = db.get_brokerage_logo(b_name)
+        if logo_b64:
+            st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><img src='data:image/png;base64,{logo_b64}' style='max-height: 50px;'><br><span class='brand-header' style='margin-top: 1rem;'>EXECUTIVE BRIEF</span></div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{b_name} | EXECUTIVE BRIEF</span></div>", unsafe_allow_html=True)
+            
         st.markdown(f"<h1>{(client_public_data['address'] if client_public_data['address'] else client_public_data['market']).title()}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{client_public_data['name']}</strong> | Strategy: <strong>{client_public_data['type']}</strong></p>", unsafe_allow_html=True)
         st.divider()
@@ -560,7 +602,7 @@ if "token" in query_params:
         st.markdown("### Strategy Memo")
         if client_public_data.get('saved_brief'):
             st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{client_public_data['saved_brief']}</div>", unsafe_allow_html=True)
-            pdf_b = generate_pdf(client_public_data['name'], client_public_data['market'], client_public_data['address'], client_public_data['saved_brief'])
+            pdf_b = generate_pdf(client_public_data['name'], client_public_data['market'], client_public_data['address'], client_public_data['saved_brief'], b_name, logo_b64)
             st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf", use_container_width=True)
         else: st.info("The advisory memo for this portfolio is currently being authored.")
         st.stop()
@@ -587,7 +629,13 @@ if not st.session_state.logged_in:
 
 elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.session_state.view_mode == "admin":
     c_hdr1, c_hdr2, c_hdr3 = st.columns([5, 2, 2], vertical_alignment="bottom")
-    with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.brokerage} | {st.session_state.role.upper()}</span>", unsafe_allow_html=True)
+    with c_hdr1:
+        logo_b64 = db.get_brokerage_logo(st.session_state.brokerage)
+        if logo_b64:
+            st.markdown(f"<img src='data:image/png;base64,{logo_b64}' style='max-height: 40px;'><br><span class='brand-header' style='text-align:left; margin-top: 10px;'>{st.session_state.role.upper()}</span>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<span class='brand-header' style='text-align:left;'>{st.session_state.brokerage} | {st.session_state.role.upper()}</span>", unsafe_allow_html=True)
+            
     with c_hdr2:
         if st.button("My Personal Hub", use_container_width=True): st.session_state.view_mode = "hub"; st.rerun()
     with c_hdr3:
@@ -660,6 +708,23 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
     with t4:
         sc1, sc2 = st.columns(2)
         with sc1:
+            st.markdown("### Enterprise Branding")
+            st.write("Upload a custom logo to display on dashboards, emails, and PDFs.")
+            uploaded_logo = st.file_uploader("Upload Brokerage Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
+            
+            if uploaded_logo:
+                if st.button("Save Logo Global Settings", use_container_width=True):
+                    b64 = base64.b64encode(uploaded_logo.getvalue()).decode()
+                    db.save_brokerage_logo(st.session_state.brokerage, b64)
+                    st.success("Brokerage logo successfully applied across the platform.")
+                    st.rerun()
+                    
+            if db.get_brokerage_logo(st.session_state.brokerage):
+                if st.button("Remove Active Logo", use_container_width=True):
+                    db.save_brokerage_logo(st.session_state.brokerage, None)
+                    st.rerun()
+                    
+            st.divider()
             st.markdown("### Dynamic UI (AI)")
             if prompt := st.chat_input("Make it ocean blue..."):
                 with st.spinner("Rebuilding CSS..."):
@@ -678,14 +743,24 @@ elif st.session_state.role in ["sysadmin", "broker", "team_admin"] and st.sessio
 elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and st.session_state.view_mode == "hub":
     if st.session_state.role != "agent":
         c_hdr1, c_hdr2, c_hdr3 = st.columns([5, 2, 2], vertical_alignment="bottom")
-        with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
+        with c_hdr1: 
+            logo_b64 = db.get_brokerage_logo(st.session_state.brokerage)
+            if logo_b64:
+                st.markdown(f"<img src='data:image/png;base64,{logo_b64}' style='max-height: 40px;'><br><span class='brand-header' style='text-align:left; margin-top: 10px;'>{st.session_state.display_name.upper()}</span>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<span class='brand-header' style='text-align:left;'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
         with c_hdr2:
             if st.button("Command Center", use_container_width=True): st.session_state.view_mode = "admin"; st.rerun()
         with c_hdr3:
             if st.button("Log Out", key="agent_top_logout", use_container_width=True): logout()
     else:
         c_hdr1, c_hdr2 = st.columns([7, 2], vertical_alignment="bottom")
-        with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
+        with c_hdr1: 
+            logo_b64 = db.get_brokerage_logo(st.session_state.brokerage)
+            if logo_b64:
+                st.markdown(f"<img src='data:image/png;base64,{logo_b64}' style='max-height: 40px;'><br><span class='brand-header' style='text-align:left; margin-top: 10px;'>{st.session_state.display_name.upper()}</span>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<span class='brand-header' style='text-align:left;'>{st.session_state.display_name.upper()} | {st.session_state.brokerage.upper()}</span>", unsafe_allow_html=True)
         with c_hdr2:
             if st.button("Log Out", key="agent_top_logout", use_container_width=True): logout()
 
@@ -733,7 +808,12 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
 
 elif st.session_state.role == "client" and st.session_state.view_mode == "client_hub":
     c_hdr1, c_hdr2 = st.columns([7, 2], vertical_alignment="bottom")
-    with c_hdr1: st.markdown(f"<span class='brand-header'>{st.session_state.brokerage.upper()} | CLIENT PORTAL</span>", unsafe_allow_html=True)
+    with c_hdr1: 
+        logo_b64 = db.get_brokerage_logo(st.session_state.brokerage)
+        if logo_b64:
+            st.markdown(f"<img src='data:image/png;base64,{logo_b64}' style='max-height: 40px;'><br><span class='brand-header' style='text-align:left; margin-top: 10px;'>CLIENT PORTAL</span>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<span class='brand-header'>{st.session_state.brokerage.upper()} | CLIENT PORTAL</span>", unsafe_allow_html=True)
     with c_hdr2:
         if st.button("Log Out", key="client_top_logout", use_container_width=True): logout()
 
@@ -828,7 +908,12 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
             
         if st.button("Log Out", key="sandbox_sidebar_logout", use_container_width=True): logout()
 
-    st.markdown(f"<div style='text-align:center; margin-bottom: 1rem;'><span class='brand-header'>{st.session_state.get('brokerage', 'PRAXIS TERMINAL').upper()}</span></div>", unsafe_allow_html=True)
+    logo_b64 = db.get_brokerage_logo(st.session_state.get('brokerage', 'PRAXIS TERMINAL'))
+    if logo_b64:
+        st.markdown(f"<div style='text-align:center; margin-bottom: 1rem;'><img src='data:image/png;base64,{logo_b64}' style='max-height: 50px;'></div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div style='text-align:center; margin-bottom: 1rem;'><span class='brand-header'>{st.session_state.get('brokerage', 'PRAXIS TERMINAL').upper()}</span></div>", unsafe_allow_html=True)
+        
     st.markdown(f"<h1>{(cd['address'] if cd['address'] else cd['market']).title()}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center; color: #777;'>Prepared for: <strong>{cd['name']}</strong> | Strategy: <strong>{cd['type']}</strong></p>", unsafe_allow_html=True)
     
@@ -860,7 +945,8 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
                         db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
             if cd.get('saved_brief'):
                 st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
-                st.download_button("Download PDF", generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief']), f"Praxis_{cd['name']}.pdf", "application/pdf", use_container_width=True)
+                pdf_b = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'], st.session_state.brokerage, logo_b64)
+                st.download_button("Download PDF", pdf_b, f"Praxis_{cd['name']}.pdf", "application/pdf", use_container_width=True)
             elif is_client:
                 st.info("Your advisor is currently authoring the executive brief for this portfolio.")
 
@@ -910,7 +996,7 @@ elif st.session_state.view_mode in ["sandbox", "client_sandbox"]:
                             db.add_user(c_email, c_pwd, "client", st.session_state.brokerage, st.session_state.username, cd['name'], c_email)
                             db.link_client_email(cid, c_email)
                             base_app_url = st.secrets.get("BASE_URL", "https://your-app.streamlit.app")
-                            pdf_bytes = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'])
+                            pdf_bytes = generate_pdf(cd['name'], cd['market'], cd['address'], cd['saved_brief'], st.session_state.brokerage, logo_b64)
                             
                             ok, status_msg = send_report_email(
                                 agent_username=own,
