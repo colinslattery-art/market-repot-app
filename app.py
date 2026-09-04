@@ -187,15 +187,96 @@ class PraxisPDF(FPDF):
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 def generate_pdf(client_name, market, address, text):
-    pdf = PraxisPDF(); pdf.add_page(); pdf.set_font('Helvetica', '', 11); pdf.set_text_color(30, 30, 30); pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 10, f"Prepared For: {sanitize_pdf(client_name)}  |  Target: {sanitize_pdf(address if address else market)}", 0, 1); pdf.ln(5)
-    for line in sanitize_pdf(text).split('\n'):
-        if not line.strip(): pdf.ln(4)
-        elif line.startswith('##'):
-            pdf.set_font('Helvetica', 'B', 12); pdf.set_text_color(15, 37, 26)
-            pdf.multi_cell(0, 8, line.replace('#', '').strip()); pdf.set_font('Helvetica', '', 11); pdf.set_text_color(30, 30, 30)
-        else: pdf.multi_cell(0, 6, line.replace('**', ''))
+    pdf = PraxisPDF()
+    pdf.add_page()
+    pdf.set_font('Helvetica', '', 10)
+    pdf.set_text_color(30, 30, 30)
+
+    # Executive Metadata Box
+    pdf.set_fill_color(245, 245, 240)
+    pdf.rect(10, 25, 190, 28, 'F')
+    
+    pdf.set_xy(14, 28)
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.set_text_color(15, 37, 26)
+    pdf.cell(90, 6, f"PREPARED FOR: {sanitize_pdf(client_name).upper()}", 0, 0)
+    pdf.cell(90, 6, f"LOCATION: {sanitize_pdf(address if address else market).upper()}", 0, 1)
+    
+    pdf.set_x(14)
+    pdf.set_font('Helvetica', '', 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(90, 6, f"DATE: {datetime.now().strftime('%B %d, %Y').upper()}", 0, 0)
+    pdf.cell(90, 6, f"CLASSIFICATION: CONFIDENTIAL ADVISORY", 0, 1)
+    
+    pdf.ln(12)
+
+    # Body Content Parsing
+    clean_text = sanitize_pdf(text)
+    for line in clean_text.split('\n'):
+        line_str = line.strip()
+        if not line_str:
+            pdf.ln(3)
+        elif line_str.startswith('##'):
+            pdf.ln(4)
+            pdf.set_font('Helvetica', 'B', 12)
+            pdf.set_text_color(15, 37, 26)
+            pdf.cell(0, 8, line_str.replace('#', '').strip().upper(), 0, 1)
+            pdf.set_draw_color(197, 160, 89)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(4)
+            pdf.set_font('Helvetica', '', 10)
+            pdf.set_text_color(40, 40, 40)
+        elif line_str.startswith('*') or line_str.startswith('-'):
+            pdf.set_font('Helvetica', '', 10)
+            pdf.set_text_color(40, 40, 40)
+            clean_bullet = line_str.lstrip('*- ').replace('**', '')
+            pdf.multi_cell(0, 5, f"   * {clean_bullet}")
+            pdf.ln(2)
+        else:
+            pdf.set_font('Helvetica', '', 10)
+            pdf.set_text_color(40, 40, 40)
+            clean_prose = line_str.replace('**', '')
+            pdf.multi_cell(0, 5, clean_prose)
+            pdf.ln(2)
+
     return pdf.output(dest='S').encode('latin-1')
+
+def generate_strategy_memo(agent_name, client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
+    if not client: return "⚠️ API Key Missing."
+    target_context = f"Property: {property_address}" if property_address else f"Sub-Market: {sub_market}"
+    
+    prompt = f"""
+    You are {agent_name}, an elite luxury real estate strategist and advisor.
+    Write a clean, highly polished executive advisory memo based strictly on this data:
+
+    - Client Name: {client_name}
+    - Strategic Focus: {report_type}
+    - Location: {target_context}
+    - Asset Value / Price Point: ${target_price:,}
+    - Cost of Capital (Rate): {interest_rate}%
+    - Market Friction Score: {friction_score}/10
+
+    STRICT FORMATTING RULES:
+    1. Do NOT write a run-on block of text. Use double returns between paragraphs.
+    2. Format all major section titles using Markdown H2 tags (e.g., `## MACRO DYNAMICS`).
+    3. Use bold bullet points for key takeaways and tactical phases (e.g., `* **Phase 1: Rate Buydowns** - Explanation...`).
+    4. Tone: Institutional, authoritative, analytical, and highly professional. DO NOT use emojis.
+
+    REQUIRED SECTIONS:
+    ## EXECUTIVE OVERVIEW
+    Brief high-level summary framing the current advisory objective for {client_name}.
+
+    ## MACRO DYNAMICS
+    Analysis of prevailing market interest rates ({interest_rate}%), local growth, and debt service implications at ${target_price:,}.
+
+    ## MARKET HEALTH & FRICTION ANALYSIS
+    Deep-dive into what the {friction_score}/10 friction score means for liquidity, inventory, and negotiation leverage in {sub_market}.
+
+    ## STRATEGIC PLAYBOOK
+    A concrete 3-phase action plan tailored specifically for a {report_type}.
+    """
+    try: return client.models.generate_content(model='gemini-3.6-flash', contents=prompt).text
+    except Exception as e: return f"Error authoring strategy brief: {e}"
 
 def run_ai(prompt, fallback="Error"):
     if not client: return "⚠️ API Key Missing."
@@ -438,7 +519,7 @@ elif st.session_state.view_mode == "sandbox":
         with c2:
             if st.button("Generate Executive Brief", use_container_width=True):
                 with st.spinner("Authoring..."):
-                    cd['saved_brief'] = run_ai(f"Act as {st.session_state.display_name}, luxury Realtor. Client: {cd['name']}. Type: {cd['type']}. Target: {cd['address'] or cd['market']}. Price: ${cd['price']}. Rate: {cd['base_rate']}%. Friction: {f_scr}/10. Tone: Polished. No emojis. Sections: MACRO DYNAMICS, MARKET HEALTH, STRATEGIC PLAYBOOK.")
+                    cd['saved_brief'] = generate_strategy_memo(st.session_state.display_name, cd['name'], cd['type'], cd['market'], cd['address'], cd['price'], cd['base_rate'], f_scr)
                     db.save_client(cid, own, st.session_state.brokerage, st.session_state.team, cd); st.rerun()
             if cd.get('saved_brief'):
                 st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{cd['saved_brief']}</div>", unsafe_allow_html=True)
