@@ -18,8 +18,10 @@ import plotly.graph_objects as go
 # --- CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Praxis Terminal", page_icon="🏛️", layout="wide")
 DB_NAME = "praxis_saas.db"
-THEME_LIGHT = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text": "#1A1A1A", "btn_text": "#FBFBF9", "btn_hover_text": "#FFFFFF", "font_header": "Playfair Display", "font_body": "Montserrat"}
-THEME_DARK = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "text": "#EAEAEA", "btn_text": "#121212", "btn_hover_text": "#121212", "font_header": "Playfair Display", "font_body": "Montserrat"}
+
+# Added distinct card_bg and border colors for perfect contrast scaling
+THEME_LIGHT = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "card_bg": "#FFFFFF", "border": "#EAEAEA", "text": "#1A1A1A", "btn_text": "#FBFBF9", "btn_hover_text": "#FFFFFF", "font_header": "Playfair Display", "font_body": "Montserrat"}
+THEME_DARK = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "card_bg": "#1E1E1E", "border": "#333333", "text": "#EAEAEA", "btn_text": "#121212", "btn_hover_text": "#121212", "font_header": "Playfair Display", "font_body": "Montserrat"}
 
 def init_state():
     defaults = {
@@ -34,8 +36,7 @@ def init_state():
         "view_mode": "login", 
         "wizard_step": 1, 
         "temp_client": {}, 
-        "active_client_id": None,
-        "return_to": "hub"
+        "active_client_id": None
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -46,13 +47,9 @@ def logout():
     init_state()
     st.rerun()
 
-# --- ADAPTIVE CSS INJECTION ---
+# --- CSS INJECTION (ADAPTIVE THEME MAPPING) ---
 def render_css():
     t = st.session_state.theme
-    
-    # Dynamic border color (Text color at 20% opacity)
-    border_color = f"{t['text']}33"
-    
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
@@ -60,37 +57,43 @@ def render_css():
             /* Global Backgrounds */
             .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             
-            /* Typography & Colors */
-            p, label, li, td, th, .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
+            /* Typography */
+            p, label, li, td, th, div[data-baseweb="base-input"], .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
             #MainMenu, footer, header {{visibility: hidden;}}
             
             .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; display: block; }}
             
-            /* Clean Form Inputs & Selectboxes */
+            /* Dividers & Expanders */
+            hr {{ border-color: {t['border']} !important; }}
+            [data-testid="stExpander"] details {{ border: 1px solid {t['border']} !important; background-color: {t['card_bg']} !important; border-radius: 6px; }}
+            [data-testid="stExpander"] summary span {{ color: {t['text']} !important; font-family: '{t['font_body']}', sans-serif !important; font-weight: 600; }}
+            [data-testid="stExpander"] summary svg {{ fill: {t['text']} !important; }}
+            
+            /* Clean Form Inputs */
             [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; padding: 0 !important; }}
             div[data-baseweb="input"], div[data-baseweb="select"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
             div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {{ background-color: transparent !important; }}
-            input, div[data-baseweb="select"] div {{ font-family: '{t['font_header']}', serif !important; font-size: 1.2rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; background-color: transparent !important; }}
+            input, div[data-baseweb="select"] div {{ font-family: '{t['font_header']}', serif !important; font-size: 1.2rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 0.5rem !important; background-color: transparent !important; }}
             input::placeholder {{ color: {t['text']} !important; opacity: 0.5 !important; -webkit-text-fill-color: rgba(0,0,0,0) !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 0.9rem !important; }}
             
-            /* Dropdown Menus (Dark Mode Fix) */
-            ul[data-baseweb="menu"] {{ background-color: {t['bg']} !important; border: 1px solid {border_color} !important; }}
-            li[data-baseweb="option"] {{ color: {t['text']} !important; font-family: '{t['font_body']}', sans-serif !important; }}
+            /* Dropdown Popovers (Selectbox Menus) */
+            div[data-baseweb="popover"] ul {{ background-color: {t['card_bg']} !important; border: 1px solid {t['border']} !important; }}
+            div[data-baseweb="popover"] li {{ color: {t['text']} !important; font-family: '{t['font_body']}', sans-serif !important; }}
             
-            /* UI Cards */
-            .client-card {{ background-color: transparent; border: 1px solid {border_color}; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; border-radius: 4px; }}
+            /* UI Client Cards */
+            .client-card {{ background-color: {t['card_bg']}; border: 1px solid {t['border']}; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; border-radius: 4px; }}
             .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.15); border-top: 3px solid {t['accent']}; transform: translateY(-2px); }}
             .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.25rem; color: {t['primary']} !important; font-family: '{t['font_header']}', serif !important; }}
             .client-card p {{ font-size: 0.75rem !important; color: {t['text']} !important; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0; }}
             
             /* Metrics Formatting */
             div[data-testid="metric-container"] {{ background-color: transparent !important; border: none !important; border-left: 2px solid {t['accent']} !important; padding: 0.5rem 1.5rem; box-shadow: none !important; }}
-            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif !important; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
+            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
             div[data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; font-weight: 600 !important; color: {t['text']} !important; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }}
             
             /* Sub-Navigation Tabs */
-            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid {border_color}; justify-content: center; }}
+            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid {t['border']}; justify-content: center; }}
             .stTabs [data-baseweb="tab"] {{ height: 4rem; background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }}
             .stTabs [aria-selected="true"] {{ border-bottom: 2px solid {t['primary']} !important; color: {t['primary']} !important; font-weight: 600; opacity: 1; }}
             
@@ -105,8 +108,8 @@ def render_css():
             
             /* Data Tables */
             .dataframe {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
-            .dataframe th {{ background-color: {t['primary']}; color: {t['btn_text']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; border-bottom: none !important; }}
-            .dataframe td {{ padding: 1rem; border-bottom: 1px solid {border_color}; background-color: transparent; color: {t['text']} !important; }}
+            .dataframe th {{ background-color: {t['primary']}; color: {t['btn_text']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; border-bottom: none !important;}}
+            .dataframe td {{ padding: 1rem; border-bottom: 1px solid {t['border']}; background-color: {t['card_bg']}; color: {t['text']} !important; }}
             
             /* Animations */
             @keyframes slideUpFade {{
@@ -135,7 +138,6 @@ def init_db():
                      client_id TEXT PRIMARY KEY, agent_username TEXT, brokerage TEXT, team TEXT, 
                      client_name TEXT, market TEXT, target_price INTEGER, address TEXT, report_type TEXT, 
                      share_token TEXT, payload TEXT)''')
-        
         try:
             c.execute("ALTER TABLE users ADD COLUMN email TEXT")
             c.execute("ALTER TABLE users ADD COLUMN smtp_server TEXT")
@@ -446,7 +448,7 @@ if "token" in query_params:
         if client_public_data.get('saved_brief'):
             st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{client_public_data['saved_brief']}</div>", unsafe_allow_html=True)
             pdf_b = generate_pdf(client_public_data['name'], client_public_data['market'], client_public_data['address'], client_public_data['saved_brief'])
-            st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf", use_container_width=True)
+            st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf")
         else: st.info("The advisory memo for this portfolio is currently being authored.")
         st.stop()
     else:
@@ -606,6 +608,7 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
                     st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox", "return_to": "hub"}); st.rerun()
 
 elif st.session_state.view_mode == "wizard":
+    st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</span></div>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
@@ -700,8 +703,19 @@ elif st.session_state.view_mode == "sandbox":
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig = go.Figure(go.Indicator(
-                mode="gauge+number", value=f_scr, title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, 
-                gauge={'axis': {'range': [0, 10]}, 'bar': {'color': st.session_state.theme['primary']}, 'bgcolor': "rgba(0,0,0,0)", 'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}]}
+                mode="gauge+number", 
+                value=f_scr, 
+                title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, 
+                gauge={
+                    'axis': {'range': [0, 10], 'tickfont': {'color': st.session_state.theme['text']}}, 
+                    'bar': {'color': st.session_state.theme['primary']}, 
+                    'bgcolor': "rgba(0,0,0,0)", 
+                    'steps': [
+                        {'range': [0, 4], 'color': '#E5F0EA'}, 
+                        {'range': [4, 7], 'color': '#FDF3E1'}, 
+                        {'range': [7, 10], 'color': '#FCE8E8'}
+                    ]
+                }
             ))
             fig.update_layout(height=250, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'); st.plotly_chart(fig, use_container_width=True)
         with c2:
@@ -759,5 +773,7 @@ elif st.session_state.view_mode == "sandbox":
                         ok, status_msg = send_report_email(own, recipient, cd['name'], share_url, pdf_bytes)
                         if ok: st.success(status_msg)
                         else: st.error(status_msg)
-                elif not cd.get('saved_brief'): st.error("Please generate the Executive Brief in Tab 1 before sending.")
-                else: st.error("Please enter a valid email address.")
+                elif not cd.get('saved_brief'):
+                    st.error("Please generate the Executive Brief in Tab 1 before sending.")
+                else:
+                    st.error("Please enter a valid email address.")
