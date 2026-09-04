@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import re
 from datetime import datetime
 from google import genai
 from fpdf import FPDF
@@ -37,8 +38,39 @@ st.markdown("""
         .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent !important; color: #888 !important; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
-        .stButton>button, .stFormSubmitButton>button { background-color: #0F251A !important; color: #FBFBF9 !important; -webkit-text-fill-color: #FBFBF9 !important; border: 1px solid #0F251A !important; border-radius: 0px !important; padding: 0.75rem 2.5rem !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.4s; width: 100%; margin-top: 1rem; }
-        .stButton>button:hover, .stFormSubmitButton>button:hover { background-color: #C5A059 !important; border-color: #C5A059 !important; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; }
+        /* General Button Styling */
+        .stButton>button, .stFormSubmitButton>button { 
+            background-color: #0F251A !important; 
+            color: #FBFBF9 !important; 
+            -webkit-text-fill-color: #FBFBF9 !important;
+            border: 1px solid #0F251A !important; 
+            border-radius: 0px !important; 
+            padding: 0.75rem 2.5rem !important; 
+            font-weight: 500 !important; 
+            text-transform: uppercase; 
+            letter-spacing: 0.15em; 
+            transition: 0.4s; 
+        }
+        .stButton>button:hover, .stFormSubmitButton>button:hover { 
+            background-color: #C5A059 !important; 
+            border-color: #C5A059 !important; 
+            color: #FFFFFF !important; 
+            -webkit-text-fill-color: #FFFFFF !important; 
+        }
+        
+        /* Force Form Submit Buttons to Center */
+        [data-testid="stFormSubmitButton"] {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-top: 1.5rem;
+        }
+        [data-testid="stFormSubmitButton"] > button {
+            width: 250px !important;
+        }
+        
+        /* Dashboard buttons maintain full width of their columns */
+        [data-testid="stVerticalBlock"] .stButton>button { width: 100%; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -75,16 +107,13 @@ class MarketDataEngine:
         return self.local_fallback[city]
         
     def get_property_details(self, price, address=""):
-        """Simulates an ATTOM/RentCast API pull for property-specific holding costs."""
-        # Realistic Texas Defaults
         tax_rate = 0.022
         hoa_monthly = 0
         insurance_rate = 0.005
         
         if address and address.strip():
-            # Deterministic simulation based on string length to simulate live data
-            tax_rate = 0.020 + (len(address) % 4) * 0.0015  # Ranges ~2.0% to ~2.45%
-            hoa_monthly = (len(address) % 5) * 45  # Ranges $0 to $180
+            tax_rate = 0.020 + (len(address) % 4) * 0.0015
+            hoa_monthly = (len(address) % 5) * 45
             
         annual_tax = price * tax_rate
         annual_ins = price * insurance_rate
@@ -163,7 +192,7 @@ if st.session_state.wizard_step <= 5:
     
     with col2:
         if st.session_state.wizard_step == 1:
-            st.markdown("<h1>Who are we advising today?</h1>", unsafe_allow_html=True)
+            st.markdown("<h1>Client Name</h1>", unsafe_allow_html=True)
             with st.form("step1_form"):
                 client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
                 if st.form_submit_button("Continue") and client_input.strip():
@@ -183,18 +212,26 @@ if st.session_state.wizard_step <= 5:
                     else: st.error(f"⚠️ Data Feed Error: No active coverage for '{market_input.title()}'.")
 
         elif st.session_state.wizard_step == 3:
-            st.markdown(f"<h1>Data verified for {st.session_state.target_market}. What is the target asset value?</h1>", unsafe_allow_html=True)
+            st.markdown("<h1>Target Price Point</h1>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; margin-bottom: 2rem; color:#777;'>Data verified for {st.session_state.target_market}. Enter the estimated listing or purchase price.</p>", unsafe_allow_html=True)
             with st.form("step3_form"):
-                price_input = st.text_input("Target Price ($)", value=f"{st.session_state.custom_market_data['price']:,}", label_visibility="collapsed")
-                if st.form_submit_button("Lock Asset Value"):
-                    try:
-                        st.session_state.update({"target_price": int(price_input.replace("$", "").replace(",", "").strip()), "wizard_step": 4})
-                        st.rerun()
-                    except: st.error("Please enter a valid number.")
+                default_price = st.session_state.custom_market_data['price']
+                price_input = st.text_input("Target Price ($)", value=f"${default_price:,}", label_visibility="collapsed")
+                if st.form_submit_button("Lock Price Point"):
+                    # Regex cleaning: strips symbols, spaces, commas, letters. Keeps only digits and decimals.
+                    clean_str = re.sub(r'[^\d.]', '', price_input)
+                    if clean_str:
+                        try:
+                            st.session_state.update({"target_price": int(float(clean_str)), "wizard_step": 4})
+                            st.rerun()
+                        except ValueError:
+                            st.error("Please enter a valid numeric value.")
+                    else:
+                        st.error("Please enter a valid numeric value.")
                     
         elif st.session_state.wizard_step == 4:
             st.markdown(f"<h1>Do you have a specific target property?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Provide an address to calculate exact holding costs, or skip to use regional averages.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 2rem; color:#777;'>Provide an address to calculate exact holding costs, or skip to use regional averages.</p>", unsafe_allow_html=True)
             with st.form("step4_form"):
                 addr_input = st.text_input("Property Address", placeholder="e.g., 123 Main St (Optional)", label_visibility="collapsed")
                 if st.form_submit_button("Continue / Skip"):
@@ -202,11 +239,16 @@ if st.session_state.wizard_step <= 5:
                     st.rerun()
 
         elif st.session_state.wizard_step == 5:
-            st.markdown("<h1>Finally, what is the strategic focus?</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
-            if st.button("Buyer Advisory"): st.session_state.update({"report_type": "Buyer Advisory Brief", "wizard_step": 6}); st.rerun()
-            if st.button("Seller Strategy"): st.session_state.update({"report_type": "Seller Disposition Strategy", "wizard_step": 6}); st.rerun()
-            if st.button("Investor Memo"): st.session_state.update({"report_type": "Investor Acquisition Memo", "wizard_step": 6}); st.rerun()
+            st.markdown("<h1>Strategic Focus</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 2rem; color:#777;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
+            
+            c_buyer, c_seller, c_investor = st.columns(3)
+            with c_buyer:
+                if st.button("Buyer Advisory"): st.session_state.update({"report_type": "Buyer Advisory Brief", "wizard_step": 6}); st.rerun()
+            with c_seller:
+                if st.button("Seller Strategy"): st.session_state.update({"report_type": "Seller Disposition Strategy", "wizard_step": 6}); st.rerun()
+            with c_investor:
+                if st.button("Investor Memo"): st.session_state.update({"report_type": "Investor Acquisition Memo", "wizard_step": 6}); st.rerun()
 
 # ====================================================================
 # PHASE 2: GENERATED LUXURY DASHBOARD (PROPERTY-LEVEL ANALYTICS)
@@ -220,7 +262,6 @@ if st.session_state.wizard_step == 6:
     report_type = st.session_state.report_type
     market_info = st.session_state.custom_market_data
     
-    # Pull property-specific taxes and HOA
     prop_details = engine.get_property_details(target_price, property_address)
     
     with st.sidebar:
@@ -252,7 +293,6 @@ if st.session_state.wizard_step == 6:
         n = 360
         return loan * (r * (1 + r)**n) / ((1 + r)**n - 1)
 
-    # Base monthly PI for Friction calculation
     base_pmt = calc_mortgage(target_price, interest_rate, 20)
     friction_score = min(round((base_pmt * 12 / market_info['income']) * 20, 1), 10.0)
 
@@ -313,11 +353,9 @@ if st.session_state.wizard_step == 6:
         base_pi = calc_mortgage(target_price, interest_rate, dp_pct)
         new_pi = calc_mortgage(eff_price, eff_rate, dp_pct)
         
-        # Calculate true property details based on effective price
         eff_details = engine.get_property_details(eff_price, property_address)
         base_details = engine.get_property_details(target_price, property_address)
         
-        # PLOTLY STACKED BAR CHART
         fig_bar = go.Figure(data=[
             go.Bar(name='Principal & Interest', x=['Standard Term', 'Optimized Strategy'], y=[base_pi, new_pi], marker_color='#0F251A'),
             go.Bar(name='Taxes & Insurance', x=['Standard Term', 'Optimized Strategy'], y=[base_details['tax_monthly'] + base_details['ins_monthly'], eff_details['tax_monthly'] + eff_details['ins_monthly']], marker_color='#C5A059'),
