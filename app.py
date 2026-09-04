@@ -69,14 +69,10 @@ def hash_password(password):
 def init_db():
     conn = sqlite3.connect("praxis_database.db")
     c = conn.cursor()
-    # Users Table
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (username TEXT PRIMARY KEY, password TEXT, role TEXT)''')
-    # Clients Table (Individualized to Agents)
-    c.execute('''CREATE TABLE IF NOT EXISTS clients
-                 (client_id TEXT PRIMARY KEY, agent_username TEXT, 
-                  client_name TEXT, market TEXT, target_price INTEGER, 
-                  address TEXT, report_type TEXT, payload TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS clients 
+                 (client_id TEXT PRIMARY KEY, agent_username TEXT, client_name TEXT, market TEXT, 
+                  target_price INTEGER, address TEXT, report_type TEXT, payload TEXT)''')
     
     # Ensure Master Admin Exists
     c.execute("SELECT * FROM users WHERE username='admin'")
@@ -177,7 +173,7 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 def get_live_rate(): return 6.8
 live_rate = get_live_rate()
 
-# --- PDF GENERATOR ---
+# --- PDF GENERATOR (BUG FIXED) ---
 def sanitize_text_for_pdf(text):
     replacements = {'“': '"', '”': '"', '‘': "'", '’': "'", '—': '--', '–': '-', '…': '...'}
     for k, v in replacements.items(): text = text.replace(k, v)
@@ -217,7 +213,9 @@ def generate_pdf(client_name, market, address, text):
             pdf.set_text_color(30, 30, 30)
         else:
             pdf.multi_cell(0, 6, line.replace('**', ''))
-    return bytes(pdf.output(dest='S'))
+    
+    # SQUASHED PDF ENCODING BUG 
+    return pdf.output(dest='S').encode('latin-1')
 
 def generate_strategy_memo(client_name, report_type, sub_market, property_address, target_price, interest_rate, friction_score):
     if not client: return "⚠️ Please add your Gemini API Key in Streamlit Secrets."
@@ -265,7 +263,7 @@ if not st.session_state.logged_in:
                     st.error("Authentication failed. Invalid credentials.")
 
 # ====================================================================
-# VIEW 1: GLOBAL ADMIN DASHBOARD (For Colin / Management)
+# VIEW 1: GLOBAL ADMIN DASHBOARD 
 # ====================================================================
 elif st.session_state.role == "admin" and st.session_state.view_mode == "admin":
     st.markdown("<div class='brand-header'>SYSTEM ADMINISTRATOR</div>", unsafe_allow_html=True)
@@ -385,7 +383,6 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "wizard"
                 if st.button("Investor Memo"): st.session_state.temp_client['type'] = "Investor Acquisition Memo"; st.session_state.wizard_step = 6; st.rerun()
 
         elif st.session_state.wizard_step == 6:
-            # Add overrides, write to SQLite Database, move to sandbox
             st.session_state.temp_client.update({'base_rate': live_rate, 'tax_rate_override': 2.2, 'hoa_override': 0, 'saved_brief': ""})
             cid = str(uuid.uuid4())
             db.save_client(cid, st.session_state.username, st.session_state.temp_client)
@@ -419,7 +416,6 @@ elif st.session_state.role == "agent" and st.session_state.view_mode == "sandbox
         new_tax = st.number_input("Tax Rate (%)", value=client_data.get('tax_rate_override', 2.2), step=0.1)
         new_hoa = st.number_input("HOA ($/mo)", value=client_data.get('hoa_override', 0), step=10)
         
-        # Auto-save changes back to SQLite
         if (new_type != client_data['type'] or new_price != client_data['price'] or 
             new_rate != client_data['base_rate'] or new_tax != client_data.get('tax_rate_override') or 
             new_hoa != client_data.get('hoa_override')):
