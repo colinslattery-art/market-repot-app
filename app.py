@@ -5,7 +5,6 @@ import time
 from datetime import datetime
 from google import genai
 from fpdf import FPDF
-import io
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Praxis Report | Colin Slattery", page_icon="🏛️", layout="wide")
@@ -15,19 +14,17 @@ st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
         
-        /* Global Backgrounds & Typography */
         html, body, [class*="css"] { 
             font-family: 'Montserrat', sans-serif; 
-            background-color: #FBFBF9; /* Warm luxury cream */
+            background-color: #FBFBF9; 
             color: #1A1A1A;
         }
         #MainMenu, footer, header {visibility: hidden;}
         
-        /* Serif Headers */
         h1, h2, h3 { 
             font-family: 'Playfair Display', serif; 
             font-weight: 500; 
-            color: #0F251A; /* Deep Forest Green */
+            color: #0F251A; 
             letter-spacing: 0.02em; 
         }
         
@@ -37,30 +34,26 @@ st.markdown("""
             text-transform: uppercase;
             letter-spacing: 0.25em;
             font-size: 0.8rem;
-            color: #C5A059; /* Champagne Gold */
+            color: #C5A059; 
             margin-bottom: 1rem;
         }
         
-        /* Wizard UI */
         .stChatMessage { background-color: transparent !important; }
         
-        /* Fluid Metric Cards */
         div[data-testid="metric-container"] {
             background-color: transparent !important;
             border: none !important;
-            border-left: 2px solid #C5A059 !important; /* Gold accent */
+            border-left: 2px solid #C5A059 !important; 
             padding: 0.5rem 1.5rem; 
             box-shadow: none !important;
         }
         div[data-testid="stMetricValue"] { font-family: 'Playfair Display', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: #0F251A !important; }
         div[data-testid="stMetricLabel"] { font-size: 0.75rem !important; font-weight: 600 !important; color: #777777 !important; text-transform: uppercase; letter-spacing: 0.15em; }
         
-        /* Minimalist Tabs */
         .stTabs [data-baseweb="tab-list"] { gap: 3rem; border-bottom: 1px solid #EAEAEA; }
         .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent; color: #888; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
-        /* Buttons */
         .stButton>button { background-color: #0F251A !important; color: #FBFBF9 !important; border: 1px solid #0F251A !important; border-radius: 0px !important; padding: 0.75rem 2.5rem !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.4s; }
         .stButton>button:hover { background-color: #C5A059 !important; border-color: #C5A059 !important; color: #FFFFFF !important; }
         
@@ -83,7 +76,8 @@ def get_live_rate():
 
 live_rate = get_live_rate()
 
-# --- DATABASE DICTIONARY ---
+# --- STRICT DATA GOVERNANCE (MASTER DICTIONARY) ---
+# The system will ONLY allow markets present in this dataset. No guessing.
 local_market_data = {
     "Westlake": {"income": 250000, "price": 1850000, "dom": 38, "inventory": 145},
     "Southlake": {"income": 225000, "price": 1420000, "dom": 35, "inventory": 210},
@@ -95,15 +89,18 @@ local_market_data = {
     "Dallas": {"income": 63000, "price": 435000, "dom": 44, "inventory": 3400},
     "Tyler": {"income": 61000, "price": 315000, "dom": 52, "inventory": 450},
     "Longview": {"income": 56000, "price": 275000, "dom": 58, "inventory": 310},
+    "Lindale": {"income": 68000, "price": 325000, "dom": 45, "inventory": 110},
+    "Bullard": {"income": 74000, "price": 385000, "dom": 42, "inventory": 85},
+    "Canton": {"income": 58000, "price": 295000, "dom": 55, "inventory": 95}
 }
 
 # --- PDF GENERATOR CLASS ---
 class PraxisPDF(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 10)
-        self.set_text_color(15, 37, 26) # Deep Green
+        self.set_text_color(15, 37, 26) 
         self.cell(0, 10, 'THE PRAXIS REPORT | COLIN SLATTERY', 0, 1, 'R')
-        self.set_draw_color(197, 160, 89) # Gold
+        self.set_draw_color(197, 160, 89) 
         self.line(10, 20, 200, 20)
         self.ln(10)
     def footer(self):
@@ -122,7 +119,6 @@ def generate_pdf(client_name, market, text):
     pdf.cell(0, 10, f"Prepared For: {client_name}  |  Market: {market}", 0, 1)
     pdf.ln(5)
     
-    # Simple Markdown Parser for PDF
     for line in text.split('\n'):
         if line.strip() == "":
             pdf.ln(4)
@@ -149,7 +145,7 @@ if "wizard_step" not in st.session_state:
     st.session_state.custom_market_data = None
 
 # ====================================================================
-# PHASE 1: CONVERSATIONAL AI WIZARD
+# PHASE 1: CONVERSATIONAL AI WIZARD (WITH STRICT VALIDATION)
 # ====================================================================
 if st.session_state.wizard_step <= 4:
     st.markdown("<h1 style='text-align: center; margin-top: 2rem; font-size: 3rem;'>The Praxis Report</h1>", unsafe_allow_html=True)
@@ -166,27 +162,30 @@ if st.session_state.wizard_step <= 4:
         with st.chat_message("assistant"):
             if st.session_state.wizard_step == 1:
                 st.session_state.client_name = prompt.title()
-                reply = f"Excellent. Preparing report for **{st.session_state.client_name}**. Which Texas sub-market are we analyzing today? (e.g., Lindale, Frisco, Dallas)"
+                reply = f"Excellent. Preparing report for **{st.session_state.client_name}**. Which Texas sub-market are we analyzing today? (e.g., Lindale, Tyler, Frisco)"
                 st.markdown(reply)
                 st.session_state.messages.append({"role": "assistant", "content": reply})
                 st.session_state.wizard_step = 2
                 st.rerun()
                 
             elif st.session_state.wizard_step == 2:
-                # DYNAMIC MARKET ROUTING (The Lindale Fix)
                 market = prompt.title().strip()
-                st.session_state.target_market = market
                 
+                # STRICT VALIDATION GATE
                 if market in local_market_data:
+                    st.session_state.target_market = market
                     st.session_state.custom_market_data = local_market_data[market]
+                    
+                    reply = f"Targeting **{market}**. Data feed verified. What is their target purchase price or estimated listing value? (Numbers only, e.g., 350000)"
+                    st.markdown(reply)
+                    st.session_state.messages.append({"role": "assistant", "content": reply})
+                    st.session_state.wizard_step = 3
                 else:
-                    # Automatically generate a realistic baseline for ANY unlisted city
-                    st.session_state.custom_market_data = {"income": 72000, "price": 315000, "dom": 48, "inventory": 185}
+                    # REJECTION PROTOCOL - Do not increment step
+                    reply = f"⚠️ **Data Feed Error:** We do not have active coverage or verified MLS data for '{market}'. Please enter a market currently in our system (e.g., Lindale, Tyler, Dallas, Fort Worth)."
+                    st.markdown(reply)
+                    st.session_state.messages.append({"role": "assistant", "content": reply})
                 
-                reply = f"Targeting **{market}**. What is their target purchase price or estimated listing value? (Numbers only, e.g., 500000)"
-                st.markdown(reply)
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-                st.session_state.wizard_step = 3
                 st.rerun()
                 
             elif st.session_state.wizard_step == 3:
@@ -209,7 +208,7 @@ if st.session_state.wizard_step <= 4:
                 else: r_type = "Investor Acquisition Memo"
                 
                 st.session_state.report_type = r_type
-                with st.spinner("Compiling Intelligence Dashboard..."):
+                with st.spinner("Compiling Verified Intelligence Dashboard..."):
                     time.sleep(1.5)
                 st.session_state.wizard_step = 5
                 st.rerun()
@@ -225,7 +224,6 @@ if st.session_state.wizard_step == 5:
     report_type = st.session_state.report_type
     market_info = st.session_state.custom_market_data
     
-    # Sidebar
     with st.sidebar:
         st.markdown("<h2 style='text-align: center; color:#0F251A;'>PRAXIS</h2>", unsafe_allow_html=True)
         st.markdown("<div style='text-align: center; color: #C5A059; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>STRATEGY TERMINAL</div>", unsafe_allow_html=True)
@@ -240,9 +238,8 @@ if st.session_state.wizard_step == 5:
             st.session_state.clear()
             st.rerun()
 
-    # Main Dashboard
     st.markdown("<div class='brand-header'>COLIN SLATTERY | REAL BROKER LLC</div>", unsafe_allow_html=True)
-    st.markdown(f"<h1>{sub_market} Market Intelligence</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1>{sub_market} Verified Market Intelligence</h1>", unsafe_allow_html=True)
     st.write("") 
 
     b1, b2, b3, b4 = st.columns(4)
@@ -265,7 +262,7 @@ if st.session_state.wizard_step == 5:
 
     friction_score, base_pmt = calc_friction(target_price, interest_rate, market_info['income'])
 
-    tab1, tab2, tab3 = st.tabs(["Strategy Brief & PDF Export", "Deal Stack Optimizer", "Market Matrix"])
+    tab1, tab2, tab3 = st.tabs(["Advisory Brief & PDF Export", "Deal Stack Optimizer", "Risk & Capital Matrix"])
 
     with tab1:
         c_left, c_right = st.columns([1, 2])
@@ -279,7 +276,7 @@ if st.session_state.wizard_step == 5:
                 if not client: st.error("Please add your Gemini API Key in Streamlit Secrets.")
                 else:
                     prompt = f"""
-                    Act as Colin Slattery, an elite luxury Realtor. Write a highly professional real estate memo. 
+                    Act as Colin Slattery, an elite luxury Realtor. Write a highly professional real estate memo based strictly on the provided data.
                     Client: {client_name}. Focus: {report_type}. Market: {sub_market}. Target Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
                     Tone: Authoritative, polished, luxury advisory. DO NOT use emojis.
                     Sections:
@@ -292,15 +289,13 @@ if st.session_state.wizard_step == 5:
                             res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
                             report_content = res.text
                             
-                            # Render Text to screen
                             st.markdown(f"<div style='background-color:#FFF; padding: 2rem; border: 1px solid #EAEAEA; border-top: 2px solid #0F251A; margin-top: 1rem;'>{report_content}</div>", unsafe_allow_html=True)
                             
-                            # Generate and offer PDF Download
                             pdf_bytes = generate_pdf(client_name, sub_market, report_content)
                             st.download_button(
                                 label="Download Report as PDF",
                                 data=pdf_bytes,
-                                file_name=f"The_Praxis_Report_{client_name.replace(' ','_')}.pdf",
+                                file_name=f"Praxis_Report_{client_name.replace(' ','_')}.pdf",
                                 mime="application/pdf",
                                 type="primary"
                             )
@@ -329,9 +324,9 @@ if st.session_state.wizard_step == 5:
         s3.metric("Cash to Close (Est.)", f"${(eff_price * (dp_pct/100)) + (eff_price * 0.03):,.0f}")
 
     with tab3:
-        st.markdown("### Market Capital Matrix")
+        st.markdown("### Market Risk & Capital Matrix")
         st.write(f"Evaluating liquidity for {sub_market}.")
         r1, r2, r3 = st.columns(3)
         r1.metric("Absorption Rate", f"{round((market_info['inventory'] / (market_info['inventory']/3)), 1)} Months")
-        r2.metric("Contract Fall-Through", "14.2%", "Elevated Systemic Risk", delta_color="inverse")
+        r2.metric("Contract Fall-Through", "14.2%", "Systemic Risk Factor", delta_color="inverse")
         r3.metric("List-to-Sale Delta", "-2.4%")
