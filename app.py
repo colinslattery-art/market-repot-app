@@ -18,8 +18,6 @@ import plotly.graph_objects as go
 # --- CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Praxis Terminal", page_icon="🏛️", layout="wide")
 DB_NAME = "praxis_saas.db"
-
-# Added specific button text and hover colors to prevent CSS overrides
 THEME_LIGHT = {"primary": "#0F251A", "accent": "#C5A059", "bg": "#FBFBF9", "text": "#1A1A1A", "btn_text": "#FBFBF9", "btn_hover_text": "#FFFFFF", "font_header": "Playfair Display", "font_body": "Montserrat"}
 THEME_DARK = {"primary": "#C5A059", "accent": "#FBFBF9", "bg": "#121212", "text": "#EAEAEA", "btn_text": "#121212", "btn_hover_text": "#121212", "font_header": "Playfair Display", "font_body": "Montserrat"}
 
@@ -47,7 +45,7 @@ def logout():
     init_state()
     st.rerun()
 
-# --- CSS INJECTION ---
+# --- CSS INJECTION (FIXED ICONS & RESPONSIVE FORMS) ---
 def render_css():
     t = st.session_state.theme
     st.markdown(f"""
@@ -55,41 +53,44 @@ def render_css():
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
             
             .stApp, .main, .block-container {{ background-color: {t['bg']} !important; }}
-            html, body, p, span, label, li, td, th {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
+            
+            /* Targeted Typography (Avoids breaking span/Material Icons) */
+            p, label, li, td, th {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
+            h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
             #MainMenu, footer, header {{visibility: hidden;}}
             
-            h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; letter-spacing: 0.02em !important; text-align: center; }}
             .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; }}
             
-            [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; }}
+            /* Clean Form Inputs */
+            [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; padding: 0 !important; }}
             div[data-baseweb="input"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
             div[data-baseweb="input"] > div {{ background-color: transparent !important; }}
+            input {{ font-family: '{t['font_header']}', serif !important; font-size: 1.2rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 0.5rem !important; background-color: transparent !important; }}
+            input::placeholder {{ color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 0.9rem !important; }}
             
-            input {{ font-family: '{t['font_header']}', serif !important; font-size: 1.5rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 1rem !important; background-color: transparent !important; }}
-            input::placeholder {{ color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 1rem !important; }}
+            /* UI Cards */
+            .client-card {{ background-color: transparent; border: 1px solid #EAEAEA; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; border-radius: 4px; }}
+            .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid {t['accent']}; transform: translateY(-2px); }}
+            .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.25rem; color: {t['primary']}; font-family: '{t['font_header']}', serif !important; }}
+            .client-card p {{ font-size: 0.75rem; color: #777 !important; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0; }}
             
-            .client-card {{ background-color: transparent; border: 1px solid #EAEAEA; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; }}
-            .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid {t['accent']}; }}
-            .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.5rem; color: {t['primary']}; }}
-            .client-card p {{ font-size: 0.8rem; color: #777; text-transform: uppercase; letter-spacing: 0.1em; }}
-            
+            /* Metrics Formatting */
             div[data-testid="metric-container"] {{ background-color: transparent !important; border: none !important; border-left: 2px solid {t['accent']} !important; padding: 0.5rem 1.5rem; box-shadow: none !important; }}
             div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
             div[data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; font-weight: 600 !important; color: {t['text']} !important; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }}
             
-            .stTabs [data-baseweb="tab-list"] {{ gap: 3rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
+            /* Sub-Navigation Tabs */
+            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
             .stTabs [data-baseweb="tab"] {{ height: 4rem; background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }}
             .stTabs [aria-selected="true"] {{ border-bottom: 2px solid {t['primary']} !important; color: {t['primary']} !important; font-weight: 600; opacity: 1; }}
             
-            /* SQUASHED BUTTON BUG: Forced text styling to target children explicitly */
-            .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {{ background-color: {t['primary']} !important; border: 1px solid {t['primary']} !important; border-radius: 4px !important; padding: 0.75rem 1.5rem !important; transition: 0.4s; height: auto !important; min-height: 3rem; }}
-            .stButton>button *, .stDownloadButton>button *, .stFormSubmitButton>button * {{ color: {t['btn_text']} !important; -webkit-text-fill-color: {t['btn_text']} !important; font-family: '{t['font_body']}', sans-serif !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.1em; }}
-            .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; }}
+            /* Responsive Buttons */
+            .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {{ background-color: {t['primary']} !important; border: 1px solid {t['primary']} !important; border-radius: 4px !important; padding: 0.5rem 1rem !important; transition: 0.3s; height: auto !important; min-height: 2.5rem; width: 100% !important; }}
+            .stButton>button *, .stDownloadButton>button *, .stFormSubmitButton>button * {{ color: {t['btn_text']} !important; -webkit-text-fill-color: {t['btn_text']} !important; font-family: '{t['font_body']}', sans-serif !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem !important; }}
+            .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }}
             .stButton>button:hover *, .stDownloadButton>button:hover *, .stFormSubmitButton>button:hover * {{ color: {t['btn_hover_text']} !important; -webkit-text-fill-color: {t['btn_hover_text']} !important; }}
             
-            [data-testid="stFormSubmitButton"] {{ display: flex; justify-content: center; width: 100%; margin-top: 1.5rem; }}
-            [data-testid="stFormSubmitButton"] > button {{ width: 250px !important; }}
-            
+            /* Data Tables */
             .dataframe {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
             .dataframe th {{ background-color: {t['primary']}; color: {t['bg']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; }}
             .dataframe td {{ padding: 1rem; border-bottom: 1px solid #EAEAEA; background-color: transparent; color: {t['text']} !important; }}
@@ -369,7 +370,6 @@ def generate_strategy_memo(agent_name, client_name, report_type, sub_market, pro
     prompt = f"""
     You are {agent_name}, an elite luxury real estate strategist and advisor.
     Write a clean, highly polished executive advisory memo based strictly on this data:
-
     - Client Name: {client_name}
     - Strategic Focus: {report_type}
     - Location: {target_context}
@@ -554,14 +554,15 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
         st.markdown(f"<div style='text-align: center; color: {st.session_state.theme['accent']} !important; font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 2rem;'>AGENT PROFILE</div>", unsafe_allow_html=True)
         
         agent_cfg = db.get_user_email_settings(st.session_state.username)
-        with st.expander("Email & Custom SMTP Settings"):
+        with st.expander("⚙️ Email Configuration"):
             with st.form("agent_smtp_form"):
-                cfg_email = st.text_input("Contact Email", value=agent_cfg.get("email") or "")
-                cfg_server = st.text_input("Custom SMTP Host", value=agent_cfg.get("smtp_server") or "", placeholder="smtp.gmail.com")
+                st.markdown("<p style='font-size: 0.8rem; color: #888;'>Route briefs via your own email.</p>", unsafe_allow_html=True)
+                cfg_email = st.text_input("Sender Email", value=agent_cfg.get("email") or "", placeholder="you@brokerage.com")
+                cfg_server = st.text_input("SMTP Host", value=agent_cfg.get("smtp_server") or "", placeholder="smtp.gmail.com")
                 cfg_port = st.number_input("SMTP Port", value=int(agent_cfg.get("smtp_port") or 587))
                 cfg_user = st.text_input("SMTP Username", value=agent_cfg.get("smtp_user") or "")
                 cfg_pass = st.text_input("SMTP Password", value=agent_cfg.get("smtp_pass") or "", type="password")
-                if st.form_submit_button("Save Email Settings", use_container_width=True):
+                if st.form_submit_button("Save Settings", use_container_width=True):
                     db.update_agent_email_settings(st.session_state.username, cfg_email, cfg_server, cfg_port, cfg_user, cfg_pass)
                     st.session_state.email = cfg_email; st.success("Updated."); st.rerun()
 
@@ -574,7 +575,6 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
         st.divider()
         st.markdown("<h3 style='text-align: center;'>ACTIVE PORTFOLIOS</h3>", unsafe_allow_html=True)
         
-        # Uses standard "agent" role fetch to ONLY pull their personally created files
         clients = db.get_scoped_clients("agent", st.session_state.username, None, None)
         if not clients: st.info("No active clients.")
         else:
@@ -638,7 +638,6 @@ elif st.session_state.view_mode == "sandbox":
             
         st.divider()
         
-        # Explicit radio state variable mapping
         theme_idx = 0 if st.session_state.theme['bg'] == '#FBFBF9' else 1
         ui_mode = st.radio("UI Mode", ["Light Mode", "Dark Mode"], index=theme_idx, horizontal=True)
         
@@ -680,19 +679,8 @@ elif st.session_state.view_mode == "sandbox":
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig = go.Figure(go.Indicator(
-                mode="gauge+number", 
-                value=f_scr, 
-                title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, 
-                gauge={
-                    'axis': {'range': [0, 10]}, 
-                    'bar': {'color': st.session_state.theme['primary']}, 
-                    'bgcolor': "rgba(0,0,0,0)", 
-                    'steps': [
-                        {'range': [0, 4], 'color': '#E5F0EA'}, 
-                        {'range': [4, 7], 'color': '#FDF3E1'}, 
-                        {'range': [7, 10], 'color': '#FCE8E8'}
-                    ]
-                }
+                mode="gauge+number", value=f_scr, title={'text': "Friction", 'font': {'color': st.session_state.theme['accent']}}, 
+                gauge={'axis': {'range': [0, 10]}, 'bar': {'color': st.session_state.theme['primary']}, 'bgcolor': "rgba(0,0,0,0)", 'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}]}
             ))
             fig.update_layout(height=250, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'); st.plotly_chart(fig, use_container_width=True)
         with c2:
