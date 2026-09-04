@@ -34,7 +34,8 @@ def init_state():
         "view_mode": "login", 
         "wizard_step": 1, 
         "temp_client": {}, 
-        "active_client_id": None
+        "active_client_id": None,
+        "return_to": "hub"
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -45,55 +46,76 @@ def logout():
     init_state()
     st.rerun()
 
-# --- CSS INJECTION (FIXED ICONS & RESPONSIVE FORMS) ---
+# --- ADAPTIVE CSS INJECTION ---
 def render_css():
     t = st.session_state.theme
+    
+    # Dynamic border color (Text color at 20% opacity)
+    border_color = f"{t['text']}33"
+    
     st.markdown(f"""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap');
             
-            .stApp, .main, .block-container {{ background-color: {t['bg']} !important; }}
+            /* Global Backgrounds */
+            .stApp, .main, .block-container, [data-testid="stSidebar"] {{ background-color: {t['bg']} !important; }}
             
-            /* Targeted Typography (Avoids breaking span/Material Icons) */
-            p, label, li, td, th {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
+            /* Typography & Colors */
+            p, label, li, td, th, .stMarkdown p {{ font-family: '{t['font_body']}', sans-serif !important; color: {t['text']} !important; }}
             h1, h2, h3 {{ font-family: '{t['font_header']}', serif !important; font-weight: 500 !important; color: {t['primary']} !important; text-align: center; margin-bottom: 1.5rem; }}
             #MainMenu, footer, header {{visibility: hidden;}}
             
-            .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; }}
+            .brand-header {{ text-align: center; font-family: '{t['font_body']}', sans-serif; text-transform: uppercase; letter-spacing: 0.25em; font-size: 0.8rem; color: {t['accent']} !important; margin-bottom: 2rem; margin-top: 1rem; display: block; }}
             
-            /* Clean Form Inputs */
+            /* Clean Form Inputs & Selectboxes */
             [data-testid="stForm"] {{ border: none !important; background-color: transparent !important; padding: 0 !important; }}
-            div[data-baseweb="input"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
-            div[data-baseweb="input"] > div {{ background-color: transparent !important; }}
-            input {{ font-family: '{t['font_header']}', serif !important; font-size: 1.2rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; padding: 0.5rem !important; background-color: transparent !important; }}
-            input::placeholder {{ color: #A0A0A0 !important; -webkit-text-fill-color: #A0A0A0 !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 0.9rem !important; }}
+            div[data-baseweb="input"], div[data-baseweb="select"] {{ background-color: transparent !important; border: none !important; border-bottom: 2px solid {t['primary']} !important; border-radius: 0 !important; }}
+            div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {{ background-color: transparent !important; }}
+            input, div[data-baseweb="select"] div {{ font-family: '{t['font_header']}', serif !important; font-size: 1.2rem !important; color: {t['text']} !important; -webkit-text-fill-color: {t['text']} !important; text-align: center !important; background-color: transparent !important; }}
+            input::placeholder {{ color: {t['text']} !important; opacity: 0.5 !important; -webkit-text-fill-color: rgba(0,0,0,0) !important; font-family: '{t['font_body']}', sans-serif !important; font-size: 0.9rem !important; }}
+            
+            /* Dropdown Menus (Dark Mode Fix) */
+            ul[data-baseweb="menu"] {{ background-color: {t['bg']} !important; border: 1px solid {border_color} !important; }}
+            li[data-baseweb="option"] {{ color: {t['text']} !important; font-family: '{t['font_body']}', sans-serif !important; }}
             
             /* UI Cards */
-            .client-card {{ background-color: transparent; border: 1px solid #EAEAEA; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; border-radius: 4px; }}
-            .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 3px solid {t['accent']}; transform: translateY(-2px); }}
-            .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.25rem; color: {t['primary']}; font-family: '{t['font_header']}', serif !important; }}
-            .client-card p {{ font-size: 0.75rem; color: #777 !important; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0; }}
+            .client-card {{ background-color: transparent; border: 1px solid {border_color}; border-top: 3px solid {t['primary']}; padding: 1.5rem; text-align: center; transition: 0.3s; margin-bottom: 0.5rem; border-radius: 4px; }}
+            .client-card:hover {{ box-shadow: 0 10px 30px rgba(0,0,0,0.15); border-top: 3px solid {t['accent']}; transform: translateY(-2px); }}
+            .client-card h3 {{ font-size: 1.5rem; margin-bottom: 0.25rem; color: {t['primary']} !important; font-family: '{t['font_header']}', serif !important; }}
+            .client-card p {{ font-size: 0.75rem !important; color: {t['text']} !important; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0; }}
             
             /* Metrics Formatting */
             div[data-testid="metric-container"] {{ background-color: transparent !important; border: none !important; border-left: 2px solid {t['accent']} !important; padding: 0.5rem 1.5rem; box-shadow: none !important; }}
-            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
+            div[data-testid="stMetricValue"] {{ font-family: '{t['font_header']}', serif !important; font-size: 2.2rem !important; font-weight: 500 !important; color: {t['primary']} !important; }}
             div[data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; font-weight: 600 !important; color: {t['text']} !important; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }}
             
             /* Sub-Navigation Tabs */
-            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid #EAEAEA; justify-content: center; }}
+            .stTabs [data-baseweb="tab-list"] {{ gap: 2rem; border-bottom: 1px solid {border_color}; justify-content: center; }}
             .stTabs [data-baseweb="tab"] {{ height: 4rem; background-color: transparent !important; color: {t['text']} !important; opacity: 0.6; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }}
             .stTabs [aria-selected="true"] {{ border-bottom: 2px solid {t['primary']} !important; color: {t['primary']} !important; font-weight: 600; opacity: 1; }}
             
             /* Responsive Buttons */
             .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {{ background-color: {t['primary']} !important; border: 1px solid {t['primary']} !important; border-radius: 4px !important; padding: 0.5rem 1rem !important; transition: 0.3s; height: auto !important; min-height: 2.5rem; width: 100% !important; }}
             .stButton>button *, .stDownloadButton>button *, .stFormSubmitButton>button * {{ color: {t['btn_text']} !important; -webkit-text-fill-color: {t['btn_text']} !important; font-family: '{t['font_body']}', sans-serif !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem !important; }}
-            .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }}
+            .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {{ background-color: {t['accent']} !important; border-color: {t['accent']} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
             .stButton>button:hover *, .stDownloadButton>button:hover *, .stFormSubmitButton>button:hover * {{ color: {t['btn_hover_text']} !important; -webkit-text-fill-color: {t['btn_hover_text']} !important; }}
+            
+            [data-testid="stFormSubmitButton"] {{ display: flex; justify-content: center; width: 100%; margin-top: 1.5rem; }}
+            [data-testid="stFormSubmitButton"] > button {{ width: 250px !important; }}
             
             /* Data Tables */
             .dataframe {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
-            .dataframe th {{ background-color: {t['primary']}; color: {t['bg']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; }}
-            .dataframe td {{ padding: 1rem; border-bottom: 1px solid #EAEAEA; background-color: transparent; color: {t['text']} !important; }}
+            .dataframe th {{ background-color: {t['primary']}; color: {t['btn_text']} !important; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; padding: 1rem; letter-spacing: 0.1em; border-bottom: none !important; }}
+            .dataframe td {{ padding: 1rem; border-bottom: 1px solid {border_color}; background-color: transparent; color: {t['text']} !important; }}
+            
+            /* Animations */
+            @keyframes slideUpFade {{
+                from {{ opacity: 0; transform: translateY(20px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+            [data-testid="stForm"], .stButton, h1 {{
+                animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }}
         </style>
     """, unsafe_allow_html=True)
 render_css()
@@ -422,9 +444,9 @@ if "token" in query_params:
 
         st.markdown("### Strategy Memo")
         if client_public_data.get('saved_brief'):
-            st.markdown(f"<div style='border-top: 2px solid #0F251A; padding-top:1rem;'>{client_public_data['saved_brief']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='border-top: 2px solid {st.session_state.theme['primary']}; padding-top:1rem;'>{client_public_data['saved_brief']}</div>", unsafe_allow_html=True)
             pdf_b = generate_pdf(client_public_data['name'], client_public_data['market'], client_public_data['address'], client_public_data['saved_brief'])
-            st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf")
+            st.download_button("Download Official PDF", pdf_b, f"Praxis_{client_public_data['name']}.pdf", "application/pdf", use_container_width=True)
         else: st.info("The advisory memo for this portfolio is currently being authored.")
         st.stop()
     else:
@@ -584,18 +606,17 @@ elif st.session_state.role in ["agent", "sysadmin", "broker", "team_admin"] and 
                     st.session_state.update({"active_client_id": c['client_id'], "view_mode": "sandbox", "return_to": "hub"}); st.rerun()
 
 elif st.session_state.view_mode == "wizard":
-    st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='text-align:center; margin-bottom: 2rem;'><span class='brand-header'>{st.session_state.display_name.upper()} | STRATEGY INTAKE</span></div>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         if st.session_state.wizard_step == 1:
-            st.markdown("<h1>Client Name</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 id='step-1'>Client Name</h1>", unsafe_allow_html=True)
             with st.form("w1"):
                 val = st.text_input("Name", placeholder="e.g. John Doe", label_visibility="collapsed")
                 if st.form_submit_button("Next", use_container_width=True) and val.strip():
                     st.session_state.temp_client['name'] = val.title().strip(); st.session_state.wizard_step = 2; st.rerun()
         elif st.session_state.wizard_step == 2:
-            st.markdown("<h1>Market Area</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 id='step-2'>Market Area</h1>", unsafe_allow_html=True)
             with st.form("w2"):
                 val = st.text_input("Market", placeholder="e.g. Dallas", label_visibility="collapsed")
                 if st.form_submit_button("Next", use_container_width=True):
@@ -603,19 +624,19 @@ elif st.session_state.view_mode == "wizard":
                     if cln: st.session_state.temp_client['market'] = cln; st.session_state.wizard_step = 3; st.rerun()
                     else: st.error("⚠️ Data Feed Error: No coverage.")
         elif st.session_state.wizard_step == 3:
-            st.markdown("<h1>Price Point</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 id='step-3'>Price Point</h1>", unsafe_allow_html=True)
             with st.form("w3"):
                 val = st.text_input("Price", value=f"${engine.get_market_metrics(st.session_state.temp_client['market'])['price']:,}", label_visibility="collapsed")
                 if st.form_submit_button("Next", use_container_width=True):
                     cln = re.sub(r'[^\d.]', '', val)
                     if cln: st.session_state.temp_client['price'] = int(float(cln)); st.session_state.wizard_step = 4; st.rerun()
         elif st.session_state.wizard_step == 4:
-            st.markdown("<h1>Specific Target Property?</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 id='step-4'>Specific Target Property?</h1>", unsafe_allow_html=True)
             with st.form("w4"):
                 val = st.text_input("Addr", placeholder="(Optional)", label_visibility="collapsed")
                 if st.form_submit_button("Next / Skip", use_container_width=True): st.session_state.temp_client['address'] = val.strip(); st.session_state.wizard_step = 5; st.rerun()
         elif st.session_state.wizard_step == 5:
-            st.markdown("<h1>Strategic Focus</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 id='step-5'>Strategic Focus</h1>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             for col, lbl, typ in zip([c1, c2, c3], ["Buyer Advisory", "Seller Strategy", "Investor Memo"], ["Buyer Advisory Brief", "Seller Disposition Strategy", "Investor Acquisition Memo"]):
                 with col:
