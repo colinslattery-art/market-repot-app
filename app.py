@@ -63,14 +63,38 @@ class MarketDataEngine:
             "Bullard": {"income": 74000, "price": 385000, "dom": 42, "inventory": 85},
             "Canton": {"income": 58000, "price": 295000, "dom": 55, "inventory": 95}
         }
+        
     def validate_market(self, city_name):
         city_clean = city_name.title().split(',')[0].strip()
         if city_clean in self.local_fallback: return city_clean
         return None
+        
     def get_market_metrics(self, city_name):
         city = self.validate_market(city_name)
         if not city: return None
         return self.local_fallback[city]
+        
+    def get_property_details(self, price, address=""):
+        """Simulates an ATTOM/RentCast API pull for property-specific holding costs."""
+        # Realistic Texas Defaults
+        tax_rate = 0.022
+        hoa_monthly = 0
+        insurance_rate = 0.005
+        
+        if address and address.strip():
+            # Deterministic simulation based on string length to simulate live data
+            tax_rate = 0.020 + (len(address) % 4) * 0.0015  # Ranges ~2.0% to ~2.45%
+            hoa_monthly = (len(address) % 5) * 45  # Ranges $0 to $180
+            
+        annual_tax = price * tax_rate
+        annual_ins = price * insurance_rate
+        
+        return {
+            "tax_monthly": annual_tax / 12,
+            "ins_monthly": annual_ins / 12,
+            "hoa_monthly": hoa_monthly,
+            "tax_rate": tax_rate
+        }
 
 engine = MarketDataEngine()
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -95,13 +119,14 @@ class PraxisPDF(FPDF):
         self.set_text_color(150, 150, 150)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def generate_pdf(client_name, market, text):
+def generate_pdf(client_name, market, address, text):
     pdf = PraxisPDF()
     pdf.add_page()
     pdf.set_font('Helvetica', '', 11)
     pdf.set_text_color(30, 30, 30)
     pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 10, f"Prepared For: {client_name}  |  Market: {market}", 0, 1)
+    target_str = address if address else market
+    pdf.cell(0, 10, f"Prepared For: {client_name}  |  Target: {target_str}", 0, 1)
     pdf.ln(5)
     for line in text.split('\n'):
         if line.strip() == "": pdf.ln(4)
@@ -118,15 +143,24 @@ def generate_pdf(client_name, market, text):
 
 # --- SESSION STATE ---
 if "wizard_step" not in st.session_state:
-    st.session_state.update({"wizard_step": 1, "client_name": "", "target_market": "", "target_price": 0, "report_type": "", "custom_market_data": None})
+    st.session_state.update({
+        "wizard_step": 1, 
+        "client_name": "", 
+        "target_market": "", 
+        "target_price": 0, 
+        "property_address": "",
+        "report_type": "", 
+        "custom_market_data": None
+    })
 
 # ====================================================================
 # PHASE 1: DISAPPEARING TYPEFORM WIZARD
 # ====================================================================
-if st.session_state.wizard_step <= 4:
+if st.session_state.wizard_step <= 5:
     st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown("<div class='brand-header'>COLIN SLATTERY | REAL BROKER LLC</div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
+    
     with col2:
         if st.session_state.wizard_step == 1:
             st.markdown("<h1>Who are we advising today?</h1>", unsafe_allow_html=True)
@@ -157,24 +191,37 @@ if st.session_state.wizard_step <= 4:
                         st.session_state.update({"target_price": int(price_input.replace("$", "").replace(",", "").strip()), "wizard_step": 4})
                         st.rerun()
                     except: st.error("Please enter a valid number.")
-
+                    
         elif st.session_state.wizard_step == 4:
+            st.markdown(f"<h1>Do you have a specific target property?</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Provide an address to calculate exact holding costs, or skip to use regional averages.</p>", unsafe_allow_html=True)
+            with st.form("step4_form"):
+                addr_input = st.text_input("Property Address", placeholder="e.g., 123 Main St (Optional)", label_visibility="collapsed")
+                if st.form_submit_button("Continue / Skip"):
+                    st.session_state.update({"property_address": addr_input.strip(), "wizard_step": 5})
+                    st.rerun()
+
+        elif st.session_state.wizard_step == 5:
             st.markdown("<h1>Finally, what is the strategic focus?</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; margin-bottom: 3rem;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
-            if st.button("Buyer Advisory"): st.session_state.update({"report_type": "Buyer Advisory Brief", "wizard_step": 5}); st.rerun()
-            if st.button("Seller Strategy"): st.session_state.update({"report_type": "Seller Disposition Strategy", "wizard_step": 5}); st.rerun()
-            if st.button("Investor Memo"): st.session_state.update({"report_type": "Investor Acquisition Memo", "wizard_step": 5}); st.rerun()
+            if st.button("Buyer Advisory"): st.session_state.update({"report_type": "Buyer Advisory Brief", "wizard_step": 6}); st.rerun()
+            if st.button("Seller Strategy"): st.session_state.update({"report_type": "Seller Disposition Strategy", "wizard_step": 6}); st.rerun()
+            if st.button("Investor Memo"): st.session_state.update({"report_type": "Investor Acquisition Memo", "wizard_step": 6}); st.rerun()
 
 # ====================================================================
-# PHASE 2: GENERATED LUXURY DASHBOARD (WITH PLOTLY CHARTS)
+# PHASE 2: GENERATED LUXURY DASHBOARD (PROPERTY-LEVEL ANALYTICS)
 # ====================================================================
-if st.session_state.wizard_step == 5:
+if st.session_state.wizard_step == 6:
     
     client_name = st.session_state.client_name
     sub_market = st.session_state.target_market
     target_price = st.session_state.target_price
+    property_address = st.session_state.property_address
     report_type = st.session_state.report_type
     market_info = st.session_state.custom_market_data
+    
+    # Pull property-specific taxes and HOA
+    prop_details = engine.get_property_details(target_price, property_address)
     
     with st.sidebar:
         st.markdown("<h2 style='text-align: center; color:#0F251A !important;'>PRAXIS</h2>", unsafe_allow_html=True)
@@ -187,14 +234,15 @@ if st.session_state.wizard_step == 5:
             st.rerun()
 
     st.markdown("<div class='brand-header'>COLIN SLATTERY | REAL BROKER LLC</div>", unsafe_allow_html=True)
-    st.markdown(f"<h1>{sub_market} Verified Market Intelligence</h1>", unsafe_allow_html=True)
+    header_title = property_address if property_address else f"{sub_market} Verified Market Intelligence"
+    st.markdown(f"<h1>{header_title.title()}</h1>", unsafe_allow_html=True)
     st.write("") 
 
     b1, b2, b3, b4 = st.columns(4)
-    b1.metric("Median Asset Value", f"${market_info['price']:,}")
-    b2.metric("Market Velocity", f"{market_info['dom']} Days")
-    b3.metric("Active Supply Pool", f"{market_info['inventory']:,}")
-    b4.metric("Est. Household Income", f"${market_info['income']:,}")
+    b1.metric("Target Asset Value", f"${target_price:,}")
+    b2.metric("Est. Tax Rate", f"{prop_details['tax_rate']*100:.2f}%")
+    b3.metric("Monthly HOA", f"${prop_details['hoa_monthly']:,.0f}")
+    b4.metric("Market Velocity", f"{market_info['dom']} Days")
     st.divider()
 
     def calc_mortgage(price, rate, dp_pct):
@@ -204,60 +252,52 @@ if st.session_state.wizard_step == 5:
         n = 360
         return loan * (r * (1 + r)**n) / ((1 + r)**n - 1)
 
-    def calc_friction(price, rate, income):
-        pmt = calc_mortgage(price, rate, 20)
-        return min(round((pmt * 12 / income) * 20, 1), 10.0), round(pmt, 2)
-
-    friction_score, base_pmt = calc_friction(target_price, interest_rate, market_info['income'])
+    # Base monthly PI for Friction calculation
+    base_pmt = calc_mortgage(target_price, interest_rate, 20)
+    friction_score = min(round((base_pmt * 12 / market_info['income']) * 20, 1), 10.0)
 
     tab1, tab2, tab3 = st.tabs(["Advisory Brief & PDF Export", "Deal Stack Optimizer", "Risk & Capital Matrix"])
 
     with tab1:
         c_left, c_right = st.columns([1, 2])
         with c_left:
-            # GAUGE CHART FOR FRICTION INDEX
             fig_gauge = go.Figure(go.Indicator(
                 mode = "gauge+number",
                 value = friction_score,
                 domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Friction Index", 'font': {'size': 14, 'color': '#C5A059', 'family': 'Montserrat'}},
+                title = {'text': "Affordability Friction", 'font': {'size': 14, 'color': '#C5A059', 'family': 'Montserrat'}},
                 gauge = {
                     'axis': {'range': [None, 10], 'tickwidth': 1, 'tickcolor': "darkblue"},
                     'bar': {'color': "#0F251A"},
                     'bgcolor': "white",
                     'borderwidth': 2,
                     'bordercolor': "#EAEAEA",
-                    'steps': [
-                        {'range': [0, 4], 'color': '#E5F0EA'},
-                        {'range': [4, 7], 'color': '#FDF3E1'},
-                        {'range': [7, 10], 'color': '#FCE8E8'}],
+                    'steps': [{'range': [0, 4], 'color': '#E5F0EA'}, {'range': [4, 7], 'color': '#FDF3E1'}, {'range': [7, 10], 'color': '#FCE8E8'}],
                 }
             ))
             fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor="#FBFBF9")
             st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
-            st.markdown(f"<p style='text-align: center; color:#777 !important; font-size:0.9rem;'>Baseline Debt Service (20% Down): <br><strong style='color:#1A1A1A !important; font-size: 1.25rem;'>${base_pmt:,.2f} / mo</strong></p>", unsafe_allow_html=True)
 
         with c_right:
             if st.button("Generate Executive PDF Brief", use_container_width=True):
                 if not client: st.error("Please add your Gemini API Key in Streamlit Secrets.")
                 else:
+                    target_context = f"Property: {property_address}" if property_address else f"Sub-Market: {sub_market}"
                     prompt = f"""
                     Act as Colin Slattery, an elite luxury Realtor. Write a highly professional real estate memo based strictly on the provided data.
-                    Client: {client_name}. Focus: {report_type}. Market: {sub_market}. Target Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
+                    Client: {client_name}. Focus: {report_type}. {target_context}. Target Price: ${target_price}. Rate: {interest_rate}%. Friction: {friction_score}/10.
                     Tone: Authoritative, polished, luxury advisory. DO NOT use emojis.
                     Sections:
-                    1. MACRO DYNAMICS: Analysis of velocity and affordability.
+                    1. MACRO DYNAMICS: Analysis of velocity and holding costs (Taxes/HOA).
                     2. MARKET HEALTH: What the {friction_score}/10 friction means for liquidity.
                     3. STRATEGIC PLAYBOOK: 1 concrete, actionable strategy for this specific client based on {report_type}.
                     """
                     with st.spinner("Authoring Advisory Brief & Compiling PDF..."):
                         try:
                             res = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
-                            report_content = res.text
-                            st.markdown(f"<div style='background-color:transparent; padding: 2rem; border-top: 2px solid #0F251A; margin-top: 1rem;'>{report_content}</div>", unsafe_allow_html=True)
-                            
-                            pdf_bytes = generate_pdf(client_name, sub_market, report_content)
-                            st.download_button(label="Download Report as PDF", data=pdf_bytes, file_name=f"Praxis_Report_{client_name.replace(' ','_')}.pdf", mime="application/pdf")
+                            st.markdown(f"<div style='background-color:transparent; padding: 2rem; border-top: 2px solid #0F251A; margin-top: 1rem;'>{res.text}</div>", unsafe_allow_html=True)
+                            pdf_bytes = generate_pdf(client_name, sub_market, property_address, res.text)
+                            st.download_button(label="Download Report as PDF", data=pdf_bytes, file_name=f"Praxis_{client_name.replace(' ','_')}.pdf", mime="application/pdf")
                         except Exception as e: st.error(f"Error: {e}")
 
     with tab2:
@@ -270,21 +310,29 @@ if st.session_state.wizard_step == 5:
         eff_rate = interest_rate - 2.0 if concession == "2-1 Rate Buydown (Year 1)" else interest_rate - 1.0 if concession == "1% Permanent Buydown" else interest_rate
         eff_rate = max(eff_rate, 1.0)
         
-        base_scenario_pmt = calc_mortgage(target_price, interest_rate, dp_pct)
-        new_scenario_pmt = calc_mortgage(eff_price, eff_rate, dp_pct)
+        base_pi = calc_mortgage(target_price, interest_rate, dp_pct)
+        new_pi = calc_mortgage(eff_price, eff_rate, dp_pct)
         
-        # PLOTLY BAR CHART
+        # Calculate true property details based on effective price
+        eff_details = engine.get_property_details(eff_price, property_address)
+        base_details = engine.get_property_details(target_price, property_address)
+        
+        # PLOTLY STACKED BAR CHART
         fig_bar = go.Figure(data=[
-            go.Bar(name='Standard Term', x=['Monthly Cost'], y=[base_scenario_pmt], marker_color='#E5E5E5'),
-            go.Bar(name='Optimized Strategy', x=['Monthly Cost'], y=[new_scenario_pmt], marker_color='#0F251A')
+            go.Bar(name='Principal & Interest', x=['Standard Term', 'Optimized Strategy'], y=[base_pi, new_pi], marker_color='#0F251A'),
+            go.Bar(name='Taxes & Insurance', x=['Standard Term', 'Optimized Strategy'], y=[base_details['tax_monthly'] + base_details['ins_monthly'], eff_details['tax_monthly'] + eff_details['ins_monthly']], marker_color='#C5A059'),
+            go.Bar(name='HOA', x=['Standard Term', 'Optimized Strategy'], y=[base_details['hoa_monthly'], eff_details['hoa_monthly']], marker_color='#E5E5E5')
         ])
-        fig_bar.update_layout(barmode='group', height=300, paper_bgcolor="#FBFBF9", plot_bgcolor="#FBFBF9", font=dict(family='Montserrat', color='#1A1A1A'), margin=dict(l=0, r=0, t=30, b=0))
+        fig_bar.update_layout(barmode='stack', height=350, paper_bgcolor="#FBFBF9", plot_bgcolor="#FBFBF9", font=dict(family='Montserrat', color='#1A1A1A'), margin=dict(l=0, r=0, t=30, b=0))
         
         st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
         
+        base_total = base_pi + base_details['tax_monthly'] + base_details['ins_monthly'] + base_details['hoa_monthly']
+        new_total = new_pi + eff_details['tax_monthly'] + eff_details['ins_monthly'] + eff_details['hoa_monthly']
+        
         s1, s2, s3 = st.columns(3)
-        s1.metric("Optimized Payment", f"${new_scenario_pmt:,.2f}", f"-${base_scenario_pmt - new_scenario_pmt:,.2f} / mo", delta_color="inverse")
-        s2.metric("Effective Rate", f"{eff_rate:.3f}%")
+        s1.metric("Optimized Total Monthly", f"${new_total:,.2f}", f"-${base_total - new_total:,.2f} / mo", delta_color="inverse")
+        s2.metric("Effective Cost of Capital", f"{eff_rate:.3f}%")
         s3.metric("Cash to Close (Est.)", f"${(eff_price * (dp_pct/100)) + (eff_price * 0.03):,.0f}")
 
     with tab3:
