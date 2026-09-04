@@ -38,7 +38,15 @@ st.markdown("""
             margin-bottom: 1rem;
         }
         
-        .stChatMessage { background-color: transparent !important; }
+        /* Wizard Card Styling */
+        .wizard-card {
+            background-color: #FFFFFF;
+            padding: 3rem;
+            border-top: 3px solid #0F251A;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+            text-align: center;
+            margin-top: 2rem;
+        }
         
         div[data-testid="metric-container"] {
             background-color: transparent !important;
@@ -54,8 +62,24 @@ st.markdown("""
         .stTabs [data-baseweb="tab"] { height: 4rem; background-color: transparent; color: #888; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.15em; border-radius: 0; }
         .stTabs [aria-selected="true"] { border-bottom: 2px solid #0F251A !important; color: #0F251A !important; font-weight: 600; }
         
-        .stButton>button { background-color: #0F251A !important; color: #FBFBF9 !important; border: 1px solid #0F251A !important; border-radius: 0px !important; padding: 0.75rem 2.5rem !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.4s; }
-        .stButton>button:hover { background-color: #C5A059 !important; border-color: #C5A059 !important; color: #FFFFFF !important; }
+        /* Form Buttons */
+        .stButton>button, .stFormSubmitButton>button { 
+            background-color: #0F251A !important; 
+            color: #FBFBF9 !important; 
+            border: 1px solid #0F251A !important; 
+            border-radius: 0px !important; 
+            padding: 0.75rem 2.5rem !important; 
+            font-weight: 500 !important; 
+            text-transform: uppercase; 
+            letter-spacing: 0.15em; 
+            transition: 0.4s; 
+            width: 100%;
+        }
+        .stButton>button:hover, .stFormSubmitButton>button:hover { 
+            background-color: #C5A059 !important; 
+            border-color: #C5A059 !important; 
+            color: #FFFFFF !important; 
+        }
         
         hr { border-color: #E5E5E5; }
     </style>
@@ -138,7 +162,6 @@ def generate_pdf(client_name, market, text):
 # --- SESSION STATE INITIALIZATION ---
 if "wizard_step" not in st.session_state:
     st.session_state.wizard_step = 1
-    st.session_state.messages = [{"role": "assistant", "content": "Welcome to The Praxis Report. Let's engineer your intelligence dashboard. Who are we advising today? (Enter Client Name)"}]
     st.session_state.client_name = ""
     st.session_state.target_market = ""
     st.session_state.target_price = 0
@@ -146,73 +169,87 @@ if "wizard_step" not in st.session_state:
     st.session_state.custom_market_data = None
 
 # ====================================================================
-# PHASE 1: CONVERSATIONAL AI WIZARD 
+# PHASE 1: DISAPPEARING TYPEFORM WIZARD 
 # ====================================================================
 if st.session_state.wizard_step <= 4:
-    st.markdown("<h1 style='text-align: center; margin-top: 2rem; font-size: 3rem;'>The Praxis Report</h1>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 8vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 3.5rem;'>The Praxis Report</h1>", unsafe_allow_html=True)
     st.markdown("<div class='brand-header'>Client Intake & Intelligence Routing</div>", unsafe_allow_html=True)
     
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    # Center the wizard card using columns
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("<div class='wizard-card'>", unsafe_allow_html=True)
+        
+        # STEP 1: CLIENT NAME
+        if st.session_state.wizard_step == 1:
+            st.markdown("<h3>Who are we advising today?</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the client or entity name below.</p>", unsafe_allow_html=True)
+            with st.form("step1_form"):
+                client_input = st.text_input("Client Name", placeholder="e.g., John & Jane Doe", label_visibility="collapsed")
+                submitted = st.form_submit_button("Continue ➔")
+                if submitted:
+                    if client_input.strip() != "":
+                        st.session_state.client_name = client_input.title().strip()
+                        st.session_state.wizard_step = 2
+                        st.rerun()
+                    else:
+                        st.error("Please enter a client name to proceed.")
+
+        # STEP 2: MARKET SELECTION
+        elif st.session_state.wizard_step == 2:
+            st.markdown(f"<h3>Which Texas sub-market are we analyzing for {st.session_state.client_name}?</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the city name to verify live MLS data coverage.</p>", unsafe_allow_html=True)
+            with st.form("step2_form"):
+                market_input = st.text_input("Market Area", placeholder="e.g., Lindale, Richardson, Dallas", label_visibility="collapsed")
+                submitted = st.form_submit_button("Verify Data Feed ➔")
+                if submitted:
+                    market_clean = market_input.title().split(',')[0].strip()
+                    if market_clean in local_market_data:
+                        st.session_state.target_market = market_clean
+                        st.session_state.custom_market_data = local_market_data[market_clean]
+                        st.session_state.wizard_step = 3
+                        st.rerun()
+                    else:
+                        st.error(f"⚠️ Data Feed Error: No active coverage for '{market_clean}'. Examples: Lindale, Frisco, Tyler.")
+
+        # STEP 3: ASSET PRICE
+        elif st.session_state.wizard_step == 3:
+            st.markdown(f"<h3>Data verified for {st.session_state.target_market}. What is the target asset value?</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Enter the estimated purchase or list price.</p>", unsafe_allow_html=True)
+            with st.form("step3_form"):
+                default_price = st.session_state.custom_market_data['price']
+                price_input = st.number_input("Target Price ($)", min_value=50000, max_value=20000000, value=default_price, step=10000, label_visibility="collapsed")
+                submitted = st.form_submit_button("Lock Asset Value ➔")
+                if submitted:
+                    st.session_state.target_price = price_input
+                    st.session_state.wizard_step = 4
+                    st.rerun()
+
+        # STEP 4: STRATEGIC FOCUS
+        elif st.session_state.wizard_step == 4:
+            st.markdown("<h3>Finally, what is the strategic focus?</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#777; margin-bottom: 2rem;'>Select the persona to tailor the intelligence brief.</p>", unsafe_allow_html=True)
             
-    if prompt := st.chat_input("Enter response here..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
-            
-        with st.chat_message("assistant"):
-            if st.session_state.wizard_step == 1:
-                st.session_state.client_name = prompt.title()
-                reply = f"Excellent. Preparing report for **{st.session_state.client_name}**. Which Texas sub-market are we analyzing today? (e.g., Lindale, Tyler, Dallas)"
-                st.markdown(reply)
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-                st.session_state.wizard_step = 2
-                st.rerun()
-                
-            elif st.session_state.wizard_step == 2:
-                # CLEAN INPUT: Removes ", TX", ", Tx", and trailing spaces
-                market_clean = prompt.title().split(',')[0].strip()
-                
-                # STRICT VALIDATION GATE
-                if market_clean in local_market_data:
-                    st.session_state.target_market = market_clean
-                    st.session_state.custom_market_data = local_market_data[market_clean]
-                    
-                    reply = f"Targeting **{market_clean}**. Data feed verified. What is their target purchase price or estimated listing value? (Numbers only, e.g., 350000)"
-                    st.markdown(reply)
-                    st.session_state.messages.append({"role": "assistant", "content": reply})
-                    st.session_state.wizard_step = 3
-                else:
-                    reply = f"⚠️ **Data Feed Error:** We do not have active coverage or verified MLS data for '{market_clean}'. Please enter a market currently in our system (e.g., Lindale, Richardson, Dallas, Fort Worth)."
-                    st.markdown(reply)
-                    st.session_state.messages.append({"role": "assistant", "content": reply})
-                
-                st.rerun()
-                
-            elif st.session_state.wizard_step == 3:
-                try:
-                    price_val = int(prompt.replace("$", "").replace(",", "").strip())
-                except:
-                    price_val = st.session_state.custom_market_data['price']
-                st.session_state.target_price = price_val
-                
-                reply = f"Target price locked at **${price_val:,}**. Finally, what is the strategic focus? (Reply 'Buyer', 'Seller', or 'Investor')"
-                st.markdown(reply)
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-                st.session_state.wizard_step = 4
-                st.rerun()
-                
-            elif st.session_state.wizard_step == 4:
-                resp = prompt.lower()
-                if "buy" in resp: r_type = "Buyer Advisory Brief"
-                elif "sell" in resp: r_type = "Seller Disposition Strategy"
-                else: r_type = "Investor Acquisition Memo"
-                
-                st.session_state.report_type = r_type
-                with st.spinner("Compiling Verified Intelligence Dashboard..."):
-                    time.sleep(1.5)
-                st.session_state.wizard_step = 5
-                st.rerun()
+            c_buyer, c_seller, c_investor = st.columns(3)
+            with c_buyer:
+                if st.button("Buyer Advisory"):
+                    st.session_state.report_type = "Buyer Advisory Brief"
+                    st.session_state.wizard_step = 5
+                    st.rerun()
+            with c_seller:
+                if st.button("Seller Strategy"):
+                    st.session_state.report_type = "Seller Disposition Strategy"
+                    st.session_state.wizard_step = 5
+                    st.rerun()
+            with c_investor:
+                if st.button("Investor Memo"):
+                    st.session_state.report_type = "Investor Acquisition Memo"
+                    st.session_state.wizard_step = 5
+                    st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================================================================
 # PHASE 2: GENERATED LUXURY DASHBOARD
